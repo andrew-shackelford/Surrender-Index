@@ -262,6 +262,26 @@ def get_pretty_time_str(time_str):
     else:
         return time_str
 
+def get_qtr_str(qtr):
+    """Given a quarter as an integer, return the quarter as a string.
+       e.g. 1 = 1st, 2 = 2nd, 5 = OT, etc.
+
+    Parameters:
+    num(int or float): The integer you wish to convert to an ordinal string.
+
+    Returns:
+    string: The integer as an ordinal string.
+    """
+
+    if qtr < 5:
+        return get_num_str(num)
+    elif qtr == 5:
+        return 'OT'
+    elif qtr == 6:
+        return '2 OT'
+    elif qtr == 7:
+        return '3 OT' # 3 overtimes ought to cover it
+    return ''
 
 def get_num_str(num):
     """Given a number, return the number as an ordinal string.
@@ -500,7 +520,7 @@ def create_tweet_str(
         ' on ' + get_num_str(play.data['down']) + \
         ' & ' + str(play.data['ydstogo']) + \
         ' with ' + get_pretty_time_str(play.data['time']) + \
-        ' remaining in the ' + get_num_str(play.data['qtr']) + \
+        ' remaining in the ' + get_qtr_str(play.data['qtr']) + \
         ' while ' + get_score_str(play) + '.'
 
     surrender_str = 'With a Surrender Index of ' + \
