@@ -262,6 +262,7 @@ def get_pretty_time_str(time_str):
     else:
         return time_str
 
+
 def get_qtr_str(qtr):
     """Given a quarter as an integer, return the quarter as a string.
        e.g. 1 = 1st, 2 = 2nd, 5 = OT, etc.
@@ -280,8 +281,9 @@ def get_qtr_str(qtr):
     elif qtr == 6:
         return '2 OT'
     elif qtr == 7:
-        return '3 OT' # 3 overtimes ought to cover it
+        return '3 OT'  # 3 overtimes ought to cover it
     return ''
+
 
 def get_num_str(num):
     """Given a number, return the number as an ordinal string.
@@ -294,19 +296,28 @@ def get_num_str(num):
     string: The integer as an ordinal string.
     """
 
-    num = int(num)  # round down
+    rounded_num = int(num)  # round down
 
-    if num % 100 == 11 or num % 100 == 12 or num % 100 == 13:
-        return str(num) + 'th'
+    if rounded_num % 100 == 11 or rounded_num % 100 == 12 or rounded_num % 100 == 13:
+        return str(rounded_num) + 'th'
 
-    if num % 10 == 1:
-        return str(num) + 'st'
-    if num % 10 == 2:
-        return str(num) + 'nd'
-    if num % 10 == 3:
-        return str(num) + 'rd'
+    if rounded_num % 10 == 1:
+        return str(rounded_num) + 'st'
+    if rounded_num % 10 == 2:
+        return str(rounded_num) + 'nd'
+    if rounded_num % 10 == 3:
+        return str(rounded_num) + 'rd'
 
-    return str(num) + 'th'
+    # add more precision for 99th percentile
+    if rounded_num == 99:
+        if num < 99.9:
+            return str(round(num, 1)) + 'th'
+        elif num < 99.99:
+            return str(round(num, 2)) + 'th'
+        else:
+            return str(round(num, 3)) + 'th'
+
+    return str(rounded_num) + 'th'
 
 
 def pretty_score_str(score_1, score_2):
