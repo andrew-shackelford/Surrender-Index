@@ -117,8 +117,13 @@ def calc_seconds_since_halftime(play):
     int: The number of seconds elapsed since halftime of that play.
     """
 
-    seconds_elapsed_in_qtr = (
-        15 * 60) - calc_seconds_from_time_str(play.data['time'])
+    # Regular season games have only one overtime of length 10 minutes
+    if play.drive.game.schedule['season_type'] != 'POST' and play.data['qtr'] == 5:
+        seconds_elapsed_in_qtr = (
+            10 * 60) - calc_seconds_from_time_str(play.data['time'])
+    else:
+        seconds_elapsed_in_qtr = (
+            15 * 60) - calc_seconds_from_time_str(play.data['time'])
     return max(seconds_elapsed_in_qtr + (15 * 60) * (play.data['qtr'] - 3), 0)
 
 
