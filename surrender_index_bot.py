@@ -280,7 +280,7 @@ def get_qtr_str(qtr):
     """
 
     if qtr < 5:
-        return get_num_str(num)
+        return get_num_str(qtr)
     elif qtr == 5:
         return 'OT'
     elif qtr == 6:
