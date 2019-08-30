@@ -15,7 +15,10 @@ import json
 import nflgame
 import numpy as np
 import scipy.stats as stats
+import threading
+import time
 import tweepy
+from twilio.rest import Client
 
 # Due to limitations in nflgame, we can only get the current score of a
 # game, not the score at the time of each play. Therefore, in the rare
@@ -511,6 +514,55 @@ def initialize_api():
     return api
 
 
+def initialize_twilio_client():
+    """Load in the Twilio credentials and initialize the Twilio API.
+
+    Returns:
+    twilio.rest.Client: An instance of the Twilio Client.
+    """
+
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+    return Client(
+        credentials['twilio_account_sid'],
+        credentials['twilio_auth_token'])
+
+
+def send_heartbeat_message():
+    """Send a heartbeat message every 24 hours to confirm the script is still running.
+
+    """
+
+    global twilio_client
+
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+    while True:
+        message = twilio_client.messages.create(
+            body="The Surrender Index script is up and running.",
+            from_=credentials['from_phone_number'],
+            to=credentials['to_phone_number'])
+        time.sleep(60 * 60 * 24)
+
+
+def send_error_message(e):
+    """Send an error message when an exception occurs.
+
+    Parameters:
+    e(Exception): The exception that occurred.
+
+    """
+
+    global twilio_client
+
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+        message = twilio_client.messages.create(
+            body="The Surrender Index script encountered an exception " + str(e) + ".",
+            from_=credentials['from_phone_number'],
+            to=credentials['to_phone_number'])
+
+
 def create_tweet_str(
         play,
         surrender_index,
@@ -596,7 +648,9 @@ def live_callback(active, completed, diffs):
     bool: Whether that play has already been tweeted.
     """
 
+    global sleep_time
     global tweeted_plays
+    sleep_time = 1
 
     for diff in diffs:
         for play in diff.plays:
@@ -617,11 +671,30 @@ def main():
 
     global api
     global historical_surrender_indices
+    global sleep_time
+    global twilio_client
 
     api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
-    nflgame.live.run(live_callback, active_interval=15,
-                     inactive_interval=900, stop=None)
+    twilio_client = initialize_twilio_client()
+    sleep_time = 1
+
+    heartbeat_thread = threading.Thread(target=send_heartbeat_message)
+    heartbeat_thread.start()
+
+    try:
+        nflgame.live.run(live_callback, active_interval=15,
+                         inactive_interval=900, stop=None)
+    except Exception as e:
+        # When an exception occurs: log it, send a message, and sleep for an
+        # exponential backoff time
+        print("Error occurred:")
+        print(e)
+        print("Sleeping for " + int(sleep_time) + " minutes")
+        send_error_message(e)
+
+        time.sleep(sleep_time * 60)
+        sleep_time *= 2
 
 
 if __name__ == "__main__":
