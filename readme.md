@@ -5,6 +5,8 @@
 
 This project contains a Twitter bot that automatically tweets every time there is a punt in an NFL game. It tweets each punt's "Surrender Index" - a completely arbitrary metric created by SB Nation's [Jon Bois](https://twitter.com/jon_bois) to quantify how cowardly a punt is.
 
+_The bots are `@surrender_index` for the main account, and `@surrender_idx90` for the secondary account._
+
 This project also contains a Jupyter Notebook used to calculate the Surrender Index for every punt since 2009, used by the bot to give context on each punt.
 
 I don't anticipate updating this much, but I'm open to any comments or suggestions on how to improve the bot, and will work on them in my spare time (and am open to any pull requests!).  
