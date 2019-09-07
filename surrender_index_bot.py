@@ -39,8 +39,8 @@ scores = {}
 # been tweeted.
 tweeted_plays = {}
 
-# The authenticated Tweepy API, since it's not passed in the callback.
-api = None
+# The authenticated Tweepy APIs, since they're not passed in the callback.
+api, ninety_api = None, None
 
 # Historical surrender indices, so we don't have to reload them each time.
 historical_surrender_indices = None
@@ -465,7 +465,7 @@ def write_current_surrender_indices(surrender_indices):
 
 def calculate_percentiles(surrender_index):
     """Load in past saved surrender indices, calculate the percentiles of the
-       given one among current season and all since 2019, then add the given
+       given one among current season and all since 2009, then add the given
        one to current season and write back to file.
 
     Parameters:
@@ -498,10 +498,11 @@ def calculate_percentiles(surrender_index):
 
 
 def initialize_api():
-    """Load in the Twitter credentials and initialize the Tweepy API.
+    """Load in the Twitter credentials and initialize the Tweepy API for both accounts.
 
     Returns:
-    tweepy.API: An instance of the Tweepy API.
+    tweepy.API, tweepy.API: Two instances of the Tweepy API: one for the main account,
+    						and one for the account that only tweets above 90th percentile.
     """
 
     with open('credentials.json', 'r') as f:
@@ -511,7 +512,14 @@ def initialize_api():
     auth.set_access_token(
         credentials['access_token'], credentials['access_token_secret'])
     api = tweepy.API(auth)
-    return api
+
+    auth = tweepy.OAuthHandler(
+        credentials['90_consumer_key'], credentials['90_consumer_secret'])
+    auth.set_access_token(
+        credentials['90_access_token'], credentials['90_access_token_secret'])
+    ninety_api = tweepy.API(auth)
+
+    return api, ninety_api
 
 
 def initialize_twilio_client():
@@ -610,6 +618,8 @@ def tweet_play(play):
     """
 
     global api
+    global ninety_api
+
     if not has_been_tweeted(play):
         surrender_index = calc_surrender_index(play)
         current_percentile, historical_percentile = calculate_percentiles(
@@ -622,6 +632,11 @@ def tweet_play(play):
 
         print(tweet_str)
         api.update_status(tweet_str)
+
+        # Post the status to the 90th percentile account.
+        if current_percentile >= 90.:
+        	ninety_api.update_status(tweet_str)
+
         update_tweeted_plays(play)
 
 
@@ -670,11 +685,12 @@ def main():
     """
 
     global api
+    global ninety_api
     global historical_surrender_indices
     global sleep_time
     global twilio_client
 
-    api = initialize_api()
+    api, ninety_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
     twilio_client = initialize_twilio_client()
     sleep_time = 1
