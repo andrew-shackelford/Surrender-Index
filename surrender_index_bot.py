@@ -391,9 +391,9 @@ def has_been_tweeted(play):
         if old_play.data['posteam'] == play.data['posteam'] and \
             old_play.data['qtr'] == play.data['qtr'] and \
             abs(calc_seconds_from_time_str(old_play.data['time'])
-                - calc_seconds_from_time_str(play.data['time'])) < 30:
+                - calc_seconds_from_time_str(play.data['time'])) < 50:
             # Check if the team with possession and quarter are the same, and
-            # if the game clock at the start of the play is within 30 seconds.
+            # if the game clock at the start of the play is within 50 seconds.
             return True
 
     return False
