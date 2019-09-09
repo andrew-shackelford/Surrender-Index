@@ -502,7 +502,7 @@ def initialize_api():
 
     Returns:
     tweepy.API, tweepy.API: Two instances of the Tweepy API: one for the main account,
-    						and one for the account that only tweets above 90th percentile.
+                            and one for the account that only tweets above 90th percentile.
     """
 
     with open('credentials.json', 'r') as f:
@@ -635,7 +635,7 @@ def tweet_play(play):
 
         # Post the status to the 90th percentile account.
         if current_percentile >= 90.:
-        	ninety_api.update_status(tweet_str)
+            ninety_api.update_status(tweet_str)
 
         update_tweeted_plays(play)
 
