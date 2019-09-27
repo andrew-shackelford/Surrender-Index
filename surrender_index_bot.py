@@ -283,7 +283,7 @@ def get_qtr_str(qtr):
     """
 
     if qtr < 5:
-        return get_num_str(qtr)
+        return 'the ' + get_num_str(qtr)
     elif qtr == 5:
         return 'OT'
     elif qtr == 6:
@@ -596,7 +596,7 @@ def create_tweet_str(
         ' on ' + get_num_str(play.data['down']) + \
         ' & ' + str(play.data['ydstogo']) + \
         ' with ' + get_pretty_time_str(play.data['time']) + \
-        ' remaining in the ' + get_qtr_str(play.data['qtr']) + \
+        ' remaining in ' + get_qtr_str(play.data['qtr']) + \
         ' while ' + get_score_str(play) + '.'
 
     surrender_str = 'With a Surrender Index of ' + \
