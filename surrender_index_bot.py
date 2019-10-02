@@ -292,13 +292,34 @@ def get_qtr_str(qtr):
         return '3 OT'  # 3 overtimes ought to cover it
     return ''
 
+def get_ordinal_suffix(num):
+    """Given a number, return the correct ordinal suffix
+
+    Parameters:
+    num(int or float): The number you wish to get the ordinal suffix for,
+                       based solely on the last digit.
+
+    Returns:
+    string: The ordinal suffix.
+
+    """
+    last_digit = str(num)[-1]
+
+    if last_digit == '1':
+        return 'st'
+    elif last_digit == '2':
+        return 'nd'
+    elif last_digit == '3':
+        return 'rd'
+    else:
+        return 'th'
 
 def get_num_str(num):
     """Given a number, return the number as an ordinal string.
        e.g. 1 = 1st, 2 = 2nd, 3 = 3rd, etc.
 
     Parameters:
-    num(int or float): The integer you wish to convert to an ordinal string.
+    num(int or float): The number you wish to convert to an ordinal string.
 
     Returns:
     string: The integer as an ordinal string.
@@ -309,23 +330,19 @@ def get_num_str(num):
     if rounded_num % 100 == 11 or rounded_num % 100 == 12 or rounded_num % 100 == 13:
         return str(rounded_num) + 'th'
 
-    if rounded_num % 10 == 1:
-        return str(rounded_num) + 'st'
-    if rounded_num % 10 == 2:
-        return str(rounded_num) + 'nd'
-    if rounded_num % 10 == 3:
-        return str(rounded_num) + 'rd'
-
     # add more precision for 99th percentile
     if rounded_num == 99:
         if num < 99.9:
-            return str(round(num, 1)) + 'th'
+            return str(round(num, 1)) + get_ordinal_suffix(round(num, 1))
         elif num < 99.99:
-            return str(round(num, 2)) + 'th'
+            return str(round(num, 2)) + get_ordinal_suffix(round(num, 2))
         else:
-            return str(round(num, 3)) + 'th'
+            # round down
+            multiplied = int(num * 1000)
+            rounded_down = float(multiplied) / 1000
+            return str(rounded_down) + get_ordinal_suffix(rounded_down)
 
-    return str(rounded_num) + 'th'
+    return str(rounded_num) + get_ordinal_suffix(rounded_num)
 
 
 def pretty_score_str(score_1, score_2):
