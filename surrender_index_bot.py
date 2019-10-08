@@ -715,19 +715,20 @@ def main():
     heartbeat_thread = threading.Thread(target=send_heartbeat_message)
     heartbeat_thread.start()
 
-    try:
-        nflgame.live.run(live_callback, active_interval=15,
-                         inactive_interval=900, stop=None)
-    except Exception as e:
-        # When an exception occurs: log it, send a message, and sleep for an
-        # exponential backoff time
-        print("Error occurred:")
-        print(e)
-        print("Sleeping for " + int(sleep_time) + " minutes")
-        send_error_message(e)
+    while True:
+        try:
+            nflgame.live.run(live_callback, active_interval=15,
+                             inactive_interval=900, stop=None)
+        except Exception as e:
+            # When an exception occurs: log it, send a message, and sleep for an
+            # exponential backoff time
+            print("Error occurred:")
+            print(e)
+            print("Sleeping for " + int(sleep_time) + " minutes")
+            send_error_message(e)
 
-        time.sleep(sleep_time * 60)
-        sleep_time *= 2
+            time.sleep(sleep_time * 60)
+            sleep_time *= 2
 
 
 if __name__ == "__main__":
