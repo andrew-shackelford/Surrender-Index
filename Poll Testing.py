@@ -20,7 +20,7 @@ import sys
 def get_driver():
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-        username = credentials['cancel_username']
+        username = credentials['cancel_email']
         password = credentials['cancel_password']
 
     if sys.platform.startswith('darwin'):
