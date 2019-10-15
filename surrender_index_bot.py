@@ -662,17 +662,13 @@ def tweet_play(play):
             historical_percentile)
 
         print(tweet_str)
-        # api.update_status(tweet_str) # DISABLED, UNCOMMENT AFTER TESTING
+        api.update_status(tweet_str)
 
         # Post the status to the 90th percentile account.
         if current_percentile >= 90.:
-            pass  # DELETE AFTER TESTING
-            # orig_status = ninety_api.update_status(tweet_str) # DISABLED, UNCOMMENT AFTER TESTING
-            # handle_cancel(orig_status._json) # UNCOMMENT AFTER TESTING
-
-        orig_status = cancel_api.update_status(
-            tweet_str)  # DELETE AFTER TESTING
-        handle_cancel(orig_status._json)  # DELETE AFTER TESTING
+            orig_status = ninety_api.update_status(tweet_str)
+            thread = threading.Thread(target=handle_cancel, args=(orig_status._json, tweet_str))
+            thread.start()
 
         update_tweeted_plays(play)
 
@@ -770,7 +766,7 @@ def check_reply(link):
         return poll_integers[0] > poll_integers[1]
 
 
-def cancel_punt(orig_status):
+def cancel_punt(orig_status, full_text):
     """Cancels a punt, in that it deletes the original tweet, posts a new
        tweet with the same text to the cancel account, and then retweets
        that tweet with the caption "CANCELED" from the original account.
@@ -781,20 +777,15 @@ def cancel_punt(orig_status):
     global ninety_api
     global cancel_api
 
-    # ninety_api.destroy_status(orig_status['id']) # UNCOMMENT AFTER TESTING
-    cancel_api.destroy_status(orig_status['id'])  # DELETE AFTER TESTING
-    # cancel_status = cancel_api.update_status(orig_status['text'])._json #
-    # UNCOMMENT AFTER TESTING
-    cancel_status = cancel_api.update_status(
-        orig_status['text'] + "new tweet")._json  # DELETE AFTER TESTING
-    new_cancel_text = "CANCELED " + \
-        'https://twitter.com/CancelSurrender/status/' + cancel_status['id_str']
+    ninety_api.destroy_status(orig_status['id'])
+    cancel_status = cancel_api.update_status(full_text)._json
+    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + cancel_status['id_str']
 
-    # ninety_api.update_status(new_cancel_text) # UNCOMMENT AFTER TESTING
-    cancel_api.update_status(new_cancel_text)  # DELETE AFTER TESTING
+    time.sleep(10)
+    ninety_api.update_status(new_cancel_text)
 
 
-def handle_cancel(orig_status):
+def handle_cancel(orig_status, full_text):
     """Handles the cancel functionality for a tweet.
        Should be called in a separate thread so that it does not block the main thread.
 
@@ -805,11 +796,9 @@ def handle_cancel(orig_status):
     try:
         orig_link = 'https://twitter.com/surrender_idx90/status/' + \
             orig_status['id_str']
-        orig_link = 'https://twitter.com/CancelSurrender/status/' + \
-            orig_status['id_str']  # DELETE AFTER TESTING
         post_reply_poll(orig_link)
         if check_reply(orig_link):
-            cancel_punt(orig_status)
+            cancel_punt(orig_status, full_text)
     except Exception as e:
         print("An error occurred when trying to handle canceling a tweet")
         print(orig_status)
@@ -881,7 +870,7 @@ def main():
             # exponential backoff time
             print("Error occurred:")
             print(e)
-            print("Sleeping for " + int(sleep_time) + " minutes")
+            print("Sleeping for " + str(sleep_time) + " minutes")
             send_error_message(e)
 
             time.sleep(sleep_time * 60)
