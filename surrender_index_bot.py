@@ -763,7 +763,7 @@ def check_reply(link):
         return None
     else:
         driver.close()
-        return poll_integers[0] > poll_integers[1]
+        return poll_integers[0] > 66
 
 
 def cancel_punt(orig_status, full_text):
