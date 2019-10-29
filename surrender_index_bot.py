@@ -11,6 +11,7 @@ as it happens.
 Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
+import datetime
 import json
 import nflgame
 import numpy as np
@@ -863,8 +864,17 @@ def main():
 
     while True:
         try:
+            # restart at 3 AM every day, since the live function fails after the NFL week changes
+            now = datetime.datetime.now()
+            if now.hour < 3:
+                stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            else:
+                now += datetime.timedelta(days=1)
+                stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
             nflgame.live.run(live_callback, active_interval=15,
-                             inactive_interval=900, stop=None)
+                             inactive_interval=900, stop=stop_date)
+            print(datetime.datetime.now())
+            print("restarting...")
         except Exception as e:
             # When an exception occurs: log it, send a message, and sleep for an
             # exponential backoff time
