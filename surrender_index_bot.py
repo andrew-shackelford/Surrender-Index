@@ -567,7 +567,7 @@ def initialize_twilio_client():
         credentials['twilio_auth_token'])
 
 
-def send_heartbeat_message():
+def send_heartbeat_message(should_repeat=True):
     """Send a heartbeat message every 24 hours to confirm the script is still running.
 
     """
@@ -581,6 +581,8 @@ def send_heartbeat_message():
             body="The Surrender Index script is up and running.",
             from_=credentials['from_phone_number'],
             to=credentials['to_phone_number'])
+        if not should_repeat:
+            break
         time.sleep(60 * 60 * 24)
 
 
@@ -859,12 +861,13 @@ def main():
     twilio_client = initialize_twilio_client()
     sleep_time = 1
 
-    heartbeat_thread = threading.Thread(target=send_heartbeat_message)
-    heartbeat_thread.start()
+    send_heartbeat_message(should_repeat=False)
 
-    while True:
+    should_continue = True
+    while should_continue:
         try:
-            # restart at 3 AM every day, since the live function fails after the NFL week changes
+            print("starting...")
+            # restart at 3 AM every day, since the live function fails when the NFL week changes
             now = datetime.datetime.now()
             if now.hour < 3:
                 stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
@@ -874,7 +877,8 @@ def main():
             nflgame.live.run(live_callback, active_interval=15,
                              inactive_interval=900, stop=stop_date)
             print(datetime.datetime.now())
-            print("restarting...")
+            print("ending...")
+            should_continue = False
         except Exception as e:
             # When an exception occurs: log it, send a message, and sleep for an
             # exponential backoff time
@@ -885,7 +889,6 @@ def main():
 
             time.sleep(sleep_time * 60)
             sleep_time *= 2
-
 
 if __name__ == "__main__":
     main()
