@@ -744,21 +744,20 @@ def check_reply(link):
     link(str): A string of the link to the original tweet.
 
     Returns:
-    bool: Whether more people voted Yes than No. Returns None if an error occurs.
+    bool: Whether more than 2/3 of people voted Yes than No. Returns None if an error occurs.
     """
     time.sleep(60 * 60)  # Wait one hour to check reply
     driver = get_driver()
     driver.get(link)
 
     poll_title = driver.find_element_by_xpath(
-        "//*[contains(text(), 'Should this punt')]")
-    poll_content = poll_title.find_element_by_xpath(
-        "./..").find_element_by_xpath("./..")
-    poll_result = poll_content.find_elements_by_xpath("div")[3]
-    poll_values = poll_result.find_elements_by_tag_name("span")
+        "//*[contains(text(), 'votes')]")
+    poll_content = poll_title.find_element_by_xpath("./..")
+    poll_result = poll_content.find_elements_by_tag_name("span")
+    poll_values = [poll_result[2], poll_result[5]]
     poll_integers = map(
-        lambda x: int(
-            x.get_attribute("innerHTML").strip('%')),
+        lambda x: int(float(
+            x.get_attribute("innerHTML").strip('%'))),
         poll_values)
 
     if len(poll_integers) != 2:
@@ -766,7 +765,7 @@ def check_reply(link):
         return None
     else:
         driver.close()
-        return poll_integers[0] > 66
+        return poll_integers[0] > 66.67
 
 
 def cancel_punt(orig_status, full_text):
@@ -806,6 +805,7 @@ def handle_cancel(orig_status, full_text):
         print("An error occurred when trying to handle canceling a tweet")
         print(orig_status)
         print(e)
+        send_error_message("An error occurred when trying to handle canceling a tweet")
 
 
 ### MAIN FUNCTIONS ###
