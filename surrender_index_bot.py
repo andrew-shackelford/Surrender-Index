@@ -11,10 +11,14 @@ as it happens.
 Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
+import datetime
 import json
 import nflgame
 import numpy as np
 import scipy.stats as stats
+from selenium import webdriver
+from selenium.webdriver.support.select import Select
+import sys
 import threading
 import time
 import tweepy
@@ -292,6 +296,7 @@ def get_qtr_str(qtr):
         return '3 OT'  # 3 overtimes ought to cover it
     return ''
 
+
 def get_ordinal_suffix(num):
     """Given a number, return the correct ordinal suffix
 
@@ -313,6 +318,7 @@ def get_ordinal_suffix(num):
         return 'rd'
     else:
         return 'th'
+
 
 def get_num_str(num):
     """Given a number, return the number as an ordinal string.
@@ -536,7 +542,15 @@ def initialize_api():
         credentials['90_access_token'], credentials['90_access_token_secret'])
     ninety_api = tweepy.API(auth)
 
-    return api, ninety_api
+    auth = tweepy.OAuthHandler(
+        credentials['cancel_consumer_key'],
+        credentials['cancel_consumer_secret'])
+    auth.set_access_token(
+        credentials['cancel_access_token'],
+        credentials['cancel_access_token_secret'])
+    cancel_api = tweepy.API(auth)
+
+    return api, ninety_api, cancel_api
 
 
 def initialize_twilio_client():
@@ -553,7 +567,7 @@ def initialize_twilio_client():
         credentials['twilio_auth_token'])
 
 
-def send_heartbeat_message():
+def send_heartbeat_message(should_repeat=True):
     """Send a heartbeat message every 24 hours to confirm the script is still running.
 
     """
@@ -567,6 +581,8 @@ def send_heartbeat_message():
             body="The Surrender Index script is up and running.",
             from_=credentials['from_phone_number'],
             to=credentials['to_phone_number'])
+        if not should_repeat:
+            break
         time.sleep(60 * 60 * 24)
 
 
@@ -636,6 +652,7 @@ def tweet_play(play):
 
     global api
     global ninety_api
+    global cancel_api
 
     if not has_been_tweeted(play):
         surrender_index = calc_surrender_index(play)
@@ -652,9 +669,143 @@ def tweet_play(play):
 
         # Post the status to the 90th percentile account.
         if current_percentile >= 90.:
-            ninety_api.update_status(tweet_str)
+            orig_status = ninety_api.update_status(tweet_str)
+            thread = threading.Thread(target=handle_cancel, args=(orig_status._json, tweet_str))
+            thread.start()
 
         update_tweeted_plays(play)
+
+
+### CANCEL FUNCTIONS ###
+
+
+def get_driver():
+    """Gets a Selenium WebDriver logged into Twitter.
+
+    Returns:
+    selenium.WebDriver: A Selenium WebDriver logged into Twitter.
+    """
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+        username = credentials['cancel_email']
+        password = credentials['cancel_password']
+
+    if sys.platform.startswith('darwin'):
+        driver = webdriver.Chrome('./chromedriver_mac')
+    elif sys.platform.startswith('linux'):
+        driver = webdriver.Chrome('./chromedriver_linux')
+    else:
+        raise Exception('No chromedriver found')
+
+    driver.implicitly_wait(10)
+    driver.get('https://twitter.com/login')
+
+    username_field = driver.find_element_by_class_name("js-username-field")
+    password_field = driver.find_element_by_class_name("js-password-field")
+    username_field.send_keys(username)
+    password_field.send_keys(password)
+
+    driver.find_element_by_class_name("EdgeButtom--medium").click()
+    return driver
+
+
+def post_reply_poll(link):
+    """Posts a reply to the given tweet with a poll asking whether the punt's Surrender Index should be canceled.
+
+    Parameters:
+    link(str): A string of the link to the original tweet.
+    """
+    driver = get_driver()
+    driver.get(link)
+
+    driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
+    driver.find_element_by_xpath("//div[@aria-label='Add poll']").click()
+
+    driver.find_element_by_name("Choice1").send_keys("Yes")
+    driver.find_element_by_name("Choice2").send_keys("No")
+    Select(driver.find_element_by_xpath(
+        "//select[@aria-label='Days']")).select_by_visible_text("0")
+    Select(driver.find_element_by_xpath(
+        "//select[@aria-label='Hours']")).select_by_visible_text("1")
+    Select(driver.find_element_by_xpath(
+        "//select[@aria-label='Minutes']")).select_by_visible_text("0")
+    driver.find_element_by_xpath("//div[@aria-label='Tweet text']").send_keys(
+        "Should this punt's Surrender Index be canceled?")
+    driver.find_element_by_xpath("//div[@data-testid='tweetButton']").click()
+
+    time.sleep(10)
+    driver.close()
+
+
+def check_reply(link):
+    """Checks the poll reply to the tweet to count the votes for Yes/No.
+
+    Parameters:
+    link(str): A string of the link to the original tweet.
+
+    Returns:
+    bool: Whether more than 2/3 of people voted Yes than No. Returns None if an error occurs.
+    """
+    time.sleep(60 * 60)  # Wait one hour to check reply
+    driver = get_driver()
+    driver.get(link)
+
+    poll_title = driver.find_element_by_xpath(
+        "//*[contains(text(), 'votes')]")
+    poll_content = poll_title.find_element_by_xpath("./..")
+    poll_result = poll_content.find_elements_by_tag_name("span")
+    poll_values = [poll_result[2], poll_result[5]]
+    poll_integers = map(
+        lambda x: int(float(
+            x.get_attribute("innerHTML").strip('%'))),
+        poll_values)
+
+    if len(poll_integers) != 2:
+        driver.close()
+        return None
+    else:
+        driver.close()
+        return poll_integers[0] > 66.67
+
+
+def cancel_punt(orig_status, full_text):
+    """Cancels a punt, in that it deletes the original tweet, posts a new
+       tweet with the same text to the cancel account, and then retweets
+       that tweet with the caption "CANCELED" from the original account.
+
+    Parameters:
+    orig_status(Dict): A dictionary representing the Status object of the punt that might be canceled.
+    """
+    global ninety_api
+    global cancel_api
+
+    ninety_api.destroy_status(orig_status['id'])
+    cancel_status = cancel_api.update_status(full_text)._json
+    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + cancel_status['id_str']
+
+    time.sleep(10)
+    ninety_api.update_status(new_cancel_text)
+
+
+def handle_cancel(orig_status, full_text):
+    """Handles the cancel functionality for a tweet.
+       Should be called in a separate thread so that it does not block the main thread.
+
+    Parameters:
+    orig_status(Dict): A dictionary representing the Status object of the punt that might be canceled.
+    """
+
+    try:
+        orig_link = 'https://twitter.com/surrender_idx90/status/' + \
+            orig_status['id_str']
+        post_reply_poll(orig_link)
+        if check_reply(orig_link):
+            cancel_punt(orig_status, full_text)
+    except Exception as e:
+        print("An error occurred when trying to handle canceling a tweet")
+        print(orig_status)
+        print(e)
+        send_error_message("An error occurred when trying to handle canceling a tweet")
 
 
 ### MAIN FUNCTIONS ###
@@ -675,9 +826,6 @@ def live_callback(active, completed, diffs):
                                         game), each of which contains a list
                                         of plays that have occurred since the
                                         last update.
-
-    Returns:
-    bool: Whether that play has already been tweeted.
     """
 
     global sleep_time
@@ -703,33 +851,44 @@ def main():
 
     global api
     global ninety_api
+    global cancel_api
     global historical_surrender_indices
     global sleep_time
     global twilio_client
 
-    api, ninety_api = initialize_api()
+    api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
     twilio_client = initialize_twilio_client()
     sleep_time = 1
 
-    heartbeat_thread = threading.Thread(target=send_heartbeat_message)
-    heartbeat_thread.start()
+    send_heartbeat_message(should_repeat=False)
 
-    while True:
+    should_continue = True
+    while should_continue:
         try:
+            print("starting...")
+            # restart at 3 AM every day, since the live function fails when the NFL week changes
+            now = datetime.datetime.now()
+            if now.hour < 3:
+                stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            else:
+                now += datetime.timedelta(days=1)
+                stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
             nflgame.live.run(live_callback, active_interval=15,
-                             inactive_interval=900, stop=None)
+                             inactive_interval=900, stop=stop_date)
+            print(datetime.datetime.now())
+            print("ending...")
+            should_continue = False
         except Exception as e:
             # When an exception occurs: log it, send a message, and sleep for an
             # exponential backoff time
             print("Error occurred:")
             print(e)
-            print("Sleeping for " + int(sleep_time) + " minutes")
+            print("Sleeping for " + str(sleep_time) + " minutes")
             send_error_message(e)
 
             time.sleep(sleep_time * 60)
             sleep_time *= 2
-
 
 if __name__ == "__main__":
     main()
