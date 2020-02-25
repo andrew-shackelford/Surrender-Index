@@ -495,7 +495,7 @@ def calculate_percentiles(surrender_index):
     surrender_index(float): The surrender index of a punt.
 
     Returns:
-    float: The percentile of the given surrender index among 2019 punts.
+    float: The percentile of the given surrender index among 2020 punts.
     float: The percentile of the given surrender index among punts since 2009.
     """
 
@@ -636,7 +636,7 @@ def create_tweet_str(
                     str(round(surrender_index, 2)) + \
                     ', this punt ranks at the ' + \
                     get_num_str(current_percentile) + \
-                    ' percentile of cowardly punts of the 2019 season, and the ' + \
+                    ' percentile of cowardly punts of the 2020 season, and the ' + \
                     get_num_str(historical_percentile) + \
                     ' percentile of all punts since 2009.'
 
