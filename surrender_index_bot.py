@@ -451,13 +451,13 @@ def update_scores(game):
 ### PERCENTILE FUNCTIONS ###
 
 def load_historical_surrender_indices():
-    """Load in saved surrender indices from punts from 2009 to 2018.
+    """Load in saved surrender indices from punts from 2009 to 2019.
 
     Returns:
     numpy.array: A numpy array containing all loaded surrender indices.
     """
 
-    with open('2009-2018_surrender_indices.npy', 'rb') as f:
+    with open('2009-2019_surrender_indices.npy', 'rb') as f:
         return np.load(f)
 
 
