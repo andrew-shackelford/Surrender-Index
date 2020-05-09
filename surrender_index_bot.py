@@ -11,6 +11,7 @@ as it happens.
 Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
+import argparse
 import datetime
 import json
 import nflgame
@@ -49,6 +50,8 @@ api, ninety_api = None, None
 # Historical surrender indices, so we don't have to reload them each time.
 historical_surrender_indices = None
 
+# Whether the bot should tweet out its findings
+should_tweet = True
 
 ### MISCELLANEOUS HELPER FUNCTIONS ###
 
@@ -290,11 +293,8 @@ def get_qtr_str(qtr):
         return 'the ' + get_num_str(qtr)
     elif qtr == 5:
         return 'OT'
-    elif qtr == 6:
-        return '2 OT'
-    elif qtr == 7:
-        return '3 OT'  # 3 overtimes ought to cover it
-    return ''
+    else:
+        return str(qtr - 4) + ' OT'
 
 
 def get_ordinal_suffix(num):
@@ -665,10 +665,11 @@ def tweet_play(play):
             historical_percentile)
 
         print(tweet_str)
-        api.update_status(tweet_str)
+        if should_tweet:
+            api.update_status(tweet_str)
 
         # Post the status to the 90th percentile account.
-        if current_percentile >= 90.:
+        if current_percentile >= 90. and should_tweet:
             orig_status = ninety_api.update_status(tweet_str)
             thread = threading.Thread(target=handle_cancel, args=(orig_status._json, tweet_str))
             thread.start()
@@ -755,17 +756,17 @@ def check_reply(link):
     poll_content = poll_title.find_element_by_xpath("./..")
     poll_result = poll_content.find_elements_by_tag_name("span")
     poll_values = [poll_result[2], poll_result[5]]
-    poll_integers = map(
-        lambda x: int(float(
-            x.get_attribute("innerHTML").strip('%'))),
+    poll_floats = map(
+        lambda x: float(
+            x.get_attribute("innerHTML").strip('%')),
         poll_values)
 
-    if len(poll_integers) != 2:
+    if len(poll_floats) != 2:
         driver.close()
         return None
     else:
         driver.close()
-        return poll_integers[0] > 66.67
+        return poll_floats[0] >= 66.67
 
 
 def cancel_punt(orig_status, full_text):
@@ -853,8 +854,14 @@ def main():
     global ninety_api
     global cancel_api
     global historical_surrender_indices
+    global should_tweet
     global sleep_time
     global twilio_client
+
+    parser = argparse.ArgumentParser(description="Run the Surrender Index bot until 3 AM.")
+    parser.add_argument('--disableTweeting', action='store_true', dest='disableTweeting')
+    args = parser.parse_args()
+    should_tweet = not args.disableTweeting
 
     api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
