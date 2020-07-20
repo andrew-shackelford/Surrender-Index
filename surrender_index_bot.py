@@ -14,6 +14,7 @@ Inspired by SB Nation's Jon Bois @jon_bois.
 import argparse
 from datetime import datetime, timedelta, timezone
 import dateutil.parser
+from dateutil import tz
 import espn_scraper as espn
 import json
 import numpy as np
@@ -749,7 +750,7 @@ def create_tweet_str(play, drive, game, surrender_index, current_percentile,
 
     decided_str = get_possessing_team(drive) + ' decided to punt to ' + return_other_team(drive, game)
     yrdln_str = ' from the ' + territory_str + ' on '
-    down_str = get_num_str(play['down']) + ' & ' + str(play['distance']) + 
+    down_str = get_num_str(play['down']) + ' & ' + str(play['distance'])
     clock_str = ' with ' + get_pretty_time_str(get_time_str(play)) + ' remaining in '
     qtr_str = get_qtr_str(get_qtr_num(play)) + ' while ' + get_score_str(play, drive, game) + '.'
 
@@ -957,7 +958,7 @@ def live_callback(plays):
 
 def update_current_year_games():
     global current_year_games
-    now = datetime.now()
+    now = get_now()
     two_months_ago = now - timedelta(days=60)
     scoreboard_urls = espn.get_all_scoreboard_urls("nfl", two_months_ago.year)
     current_year_games = []
@@ -973,13 +974,17 @@ def update_current_year_games():
         for event in data['content']['sbData']['events']:
             current_year_games.append(event)
 
+def get_now():
+    local = tz.gettz()
+    return datetime.now(tz=local)
+
 
 def get_active_game_ids():
     global current_year_games
     global completed_game_ids
     global start_times
 
-    now = datetime.now()
+    now = get_now()
     active_game_ids = set()
 
     for game in current_year_games:
@@ -988,6 +993,8 @@ def get_active_game_ids():
             continue
         game_time = dateutil.parser.parse(
             game['date']).replace(tzinfo=timezone.utc).astimezone(tz=None)
+        print(game_time)
+        print(now)
         if game_time - timedelta(minutes=15) < now and game_time + timedelta(hours=6) > now:
             # game should start within 15 minutes and not started more than 6 hours ago
             active_game_ids.add(game['id'])
@@ -1117,7 +1124,7 @@ def main():
             # update current year games at 3 AM every day
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
-            now = datetime.now()
+            now = get_now()
             if now.hour < 3:
                 stop_date = now.replace(hour=3,
                                         minute=0,
@@ -1130,7 +1137,7 @@ def main():
                                         second=0,
                                         microsecond=0)
 
-            while datetime.now() < stop_date:
+            while get_now() < stop_date:
                 download_data_for_active_games()
                 sleep_time = 1.
 
