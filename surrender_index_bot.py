@@ -12,10 +12,13 @@ Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
 import argparse
-import datetime
+from datetime import datetime, timedelta, timezone
+import dateutil.parser
+import espn_scraper as espn
 import json
-import nflgame
 import numpy as np
+import os
+import random
 import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
@@ -24,17 +27,6 @@ import threading
 import time
 import tweepy
 from twilio.rest import Client
-
-# Due to limitations in nflgame, we can only get the current score of a
-# game, not the score at the time of each play. Therefore, in the rare
-# case of a punt return TD or muffed punt resulting in a touchdown for the
-# kicking team, our score calculation will be inaccurate since the score
-# when the team chose to punt will be different than the score at the end
-# of the punt. Therefore, we'll need to keep track of the score of the
-# previous play when calculating the Surrender Index. Since each game
-# begins with at least the kickoff before a punt could occur, this dictionary
-# will be updated with the necessary values before they are needed.
-scores = {}
 
 # Due to problems with the NFL api, sometimes plays will be sent down the
 # wire twice if they are updated (usually to correct the line of scrimmage
@@ -60,44 +52,92 @@ def is_punt(play):
     """Determine if a play is a punt.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
 
     Returns:
     bool: Whether the given play object is a punt.
     """
-
-    try:
-        return 'punts' in play.desc.lower() or 'punt is blocked' in play.desc.lower()
-    except BaseException:
+    text = play['text'].lower()
+    if 'fake punt' in text:
         return False
+    if 'punts' in text:
+        return True
+    if 'punt is blocked' in text:
+        return True
+    if 'punt for ' in text:
+        return True
+    return False
 
 
 def get_yrdln_int(play):
     """Given a play, get the line of scrimmage as an integer.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
 
     Returns:
     int: The yard line as an integer.
     """
-    return int(play.data['yrdln'].split(' ')[-1])
+    return play['yardLine']
 
 
-def return_other_team(play):
-    """Given a play, return the team that does not have possession.
+def get_possessing_team(drive):
+    """Given a drive, get the possessing team as an abbreviation.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    drive(dict): The drive dictionary.
 
     Returns:
-    string: The 3-letter abbrevation of the team without possession.
+    string: The possessing team's abbreviation.
+    """
+    return drive['team']['abbreviation']
+
+
+def get_home_team(game):
+    """Given a game, get the home team as an abbreviation.
+
+    Parameters:
+    drive(dict): The drive dictionary.
+
+    Returns:
+    string: The home team's abbreviation.
+    """
+    return game['boxscore']['teams'][1]['team']['abbreviation']
+
+
+def get_away_team(game):
+    """Given a game, get the away team as an abbreviation.
+
+    Parameters:
+    drive(dict): The drive dictionary.
+
+    Returns:
+    string: The home team's abbreviation.
+    """
+    return game['boxscore']['teams'][0]['team']['abbreviation']
+
+
+def return_other_team(drive, game):
+    """Given a drive and a game, return the abbreviation of the team that does not have possession.
+
+    Parameters:
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
+
+    Returns:
+    string: The abbrevation of the team without possession.
     """
 
-    if play.data['posteam'] == play.drive.game.home:
-        return play.drive.game.away
+    if get_possessing_team(drive) == get_home_team(game):
+        return get_away_team(game)
     else:
-        return play.drive.game.home
+        return get_home_team(game)
+
+def get_previous_play(play, drive):
+    for idx, play_option in enumerate(drive):
+        if get_qtr_num(play) == get_qtr_num(play_option) and get_home_score(play) == get_home_score(play_option) and get_away_score(play) == get_away_score(play_option) and get_time_str(play) == get_time_str(play_option) and play['text'] == play_option['text']:
+            return drive[idx-1]
+    raise Exception("Unable to find previous play")
 
 
 ### CALCULATION HELPER FUNCTIONS ###
@@ -117,43 +157,117 @@ def calc_seconds_from_time_str(time_str):
     return minutes * 60 + seconds
 
 
-def calc_seconds_since_halftime(play):
+def is_postseason(game):
+    """Given a game, determine whether or not the game is in the postseason.
+
+    Parameters:
+    game(dict): The game dictionary
+
+    Returns:
+    bool: Whether or not the game is a postseason game.
+
+    """
+    return game['header']['season']['type'] == 3
+
+
+def get_time_str(play):
+    """Given a play, return the game clock as a string.
+
+    Parameters:
+    play(dict): The play dictionary
+
+    Returns:
+    string: The game clock as a string.
+    """
+    return play['clock']['displayValue']
+
+
+def get_qtr_num(play):
+    """Given a play, return the quarter as an integer.
+
+    Parameters:
+    play(dict): The play dictionary
+
+    Returns:
+    int: The quarter as an integer.
+    """
+    return play['period']['number']
+
+
+def calc_seconds_since_halftime(play, game):
     """Calculate the number of seconds elapsed since halftime.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
+    game(dict): The game dictionary.
 
     Returns:
     int: The number of seconds elapsed since halftime of that play.
     """
 
     # Regular season games have only one overtime of length 10 minutes
-    if play.drive.game.schedule['season_type'] != 'POST' and play.data['qtr'] == 5:
-        seconds_elapsed_in_qtr = (
-            10 * 60) - calc_seconds_from_time_str(play.data['time'])
+    if not is_postseason(game) and get_qtr_num(play) == 5:
+        seconds_elapsed_in_qtr = (10 * 60) - calc_seconds_from_time_str(
+            get_time_str(play))
     else:
-        seconds_elapsed_in_qtr = (
-            15 * 60) - calc_seconds_from_time_str(play.data['time'])
-    return max(seconds_elapsed_in_qtr + (15 * 60) * (play.data['qtr'] - 3), 0)
+        seconds_elapsed_in_qtr = (15 * 60) - calc_seconds_from_time_str(
+            get_time_str(play))
+    return max(seconds_elapsed_in_qtr + (15 * 60) * (get_qtr_num(play) - 3), 0)
 
 
-def calc_score_diff(play):
+def get_home_score(play):
+    """Given a play, return the home score as an integer.
+
+    Parameters:
+    play(dict): The play dictionary
+
+    Returns:
+    int: The home score as an integer.
+    """
+    return play['home_score']
+
+
+def get_away_score(play):
+    """Given a play, return the away score as an integer.
+
+    Parameters:
+    play(dict): The play dictionary
+
+    Returns:
+    int: The away score as an integer.
+    """
+    return play['away_score']
+
+
+def calc_score_diff(play, drive, game):
     """Calculate the score differential of the team with possession.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
 
     Returns:
     int: The score differential of the team with possession.
     """
 
-    global scores
-    if play.home:
-        return scores.get(play.drive.game.home, 0) - \
-            scores.get(play.drive.game.away, 0)
+    if get_possessing_team(drive) == get_home_team(game):
+        return get_home_score(play) - get_away_score(play)
     else:
-        return scores.get(play.drive.game.away, 0) - \
-            scores.get(play.drive.game.home, 0)
+        return get_away_score(play) - get_home_score(play)
+
+
+def is_in_opposing_territory(play):
+    """Given a play, determine if the line of scrimmage is in opposing territory.
+    For the purposes of our calculations, the 50 yard line counts as opposing territory.
+
+    Parameters:
+    play(dict): The play dictionary
+
+    Returns:
+    bool: Whether or not the play is in opposing territory.
+    """
+    return play['yardLine'] == play['yardsToEndzone']
 
 
 ### SURRENDER INDEX FUNCTIONS ###
@@ -163,17 +277,16 @@ def calc_field_pos_score(play):
     """Calculate the field position score for a play.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
 
     Returns:
-    float: The "field position score" for a given play,
-           used to calculate the surrender index.
+    float: The "field position score" for a given play, used to calculate the surrender index.
     """
 
     try:
-        if '50' in play.data['yrdln']:
-            return (1.1) ** 10.
-        if play.data['posteam'] in play.data['yrdln']:
+        if get_yrdln_int(play) == 50:
+            return (1.1)**10.
+        if not is_in_opposing_territory(play):
             return max(1., (1.1)**(get_yrdln_int(play) - 40))
         else:
             return (1.2)**(50 - get_yrdln_int(play)) * ((1.1)**(10))
@@ -185,37 +298,37 @@ def calc_yds_to_go_multiplier(play):
     """Calculate the yards to go multiplier for a play.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
 
     Returns:
-    float: The "yards to go multiplier" for a given play,
-           used to calculate the surrender index.
+    float: The "yards to go multiplier" for a given play, used to calculate the surrender index.
     """
 
-    if play.data['ydstogo'] >= 10:
+    if play['distance'] >= 10:
         return 0.2
-    elif play.data['ydstogo'] >= 7:
+    elif play['distance'] >= 7:
         return 0.4
-    elif play.data['ydstogo'] >= 4:
+    elif play['distance'] >= 4:
         return 0.6
-    elif play.data['ydstogo'] >= 2:
+    elif play['distance'] >= 2:
         return 0.8
     else:
         return 1.
 
 
-def calc_score_multiplier(play):
+def calc_score_multiplier(play, drive, game):
     """Calculate the score multiplier for a play.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
 
     Returns:
-    float: The "score multiplier" for a given play,
-           used to calculate the surrender index.
+    float: The "score multiplier" for a given play, used to calculate the surrender index.
     """
 
-    score_diff = calc_score_diff(play)
+    score_diff = calc_score_diff(get_previous_play(play), drive, game)
 
     if score_diff > 0:
         return 1.
@@ -227,36 +340,40 @@ def calc_score_multiplier(play):
         return 4.
 
 
-def calc_clock_multiplier(play):
+def calc_clock_multiplier(play, drive, game):
     """Calculate the clock multiplier for a play.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
 
     Returns:
-    float: The "clock multiplier" for a given play,
-           used to calculate the surrender index.
+    float: The "clock multiplier" for a given play, used to calculate the surrender index.
     """
 
-    if calc_score_diff(play) <= 0 and play.data['qtr'] > 2:
-        seconds_since_halftime = calc_seconds_since_halftime(play)
-        return ((seconds_since_halftime * 0.001) ** 3.) + 1.
+    if calc_score_diff(play, drive, game) <= 0 and get_qtr_num(play) > 2:
+        seconds_since_halftime = calc_seconds_since_halftime(play, game)
+        return ((seconds_since_halftime * 0.001)**3.) + 1.
     else:
         return 1.
 
 
-def calc_surrender_index(play):
+def calc_surrender_index(play, drive, game):
     """Calculate the surrender index for a play.
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
 
     Returns:
     float: The surrender index for a given play.
     """
 
-    return calc_field_pos_score(play) * calc_yds_to_go_multiplier(
-        play) * calc_score_multiplier(play) * calc_clock_multiplier(play)
+    return calc_field_pos_score(
+        play) * calc_yds_to_go_multiplier(play) * calc_score_multiplier(
+            play, drive, game) * calc_clock_multiplier(play, drive, game)
 
 
 ### STRING FORMAT FUNCTIONS ###
@@ -279,14 +396,14 @@ def get_pretty_time_str(time_str):
 
 
 def get_qtr_str(qtr):
-    """Given a quarter as an integer, return the quarter as a string.
+    """Given a quarter as an integer, return the quarter as a string, handling overtime correctly.
        e.g. 1 = 1st, 2 = 2nd, 5 = OT, etc.
 
     Parameters:
-    num(int or float): The integer you wish to convert to an ordinal string.
+    qtr(int): The quater number you wish to convert to an ordinal string.
 
     Returns:
-    string: The integer as an ordinal string.
+    string: The quater as an correctly formatted string.
     """
 
     if qtr < 5:
@@ -298,7 +415,7 @@ def get_qtr_str(qtr):
 
 
 def get_ordinal_suffix(num):
-    """Given a number, return the correct ordinal suffix
+    """Given a digit, return the correct ordinal suffix.
 
     Parameters:
     num(int or float): The number you wish to get the ordinal suffix for,
@@ -321,7 +438,7 @@ def get_ordinal_suffix(num):
 
 
 def get_num_str(num):
-    """Given a number, return the number as an ordinal string.
+    """Given a number, return the number as an ordinal string, handling percentiles correctly.
        e.g. 1 = 1st, 2 = 2nd, 3 = 3rd, etc.
 
     Parameters:
@@ -374,47 +491,63 @@ def pretty_score_str(score_1, score_2):
     return ret_str
 
 
-def get_score_str(play):
+def get_score_str(play, drive, game):
     """Given a play, return the game score as a pretty string,
        with the possessing team first.
        e.g. "losing 28 to 34"
 
     Parameters:
-    play(nflgame.game.Play): The play object.
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
 
     Returns:
     string: The game score as a pretty string.
     """
 
     global scores
-    if play.data['posteam'] == play.drive.game.home:
-        return pretty_score_str(
-            scores[play.drive.game.home], scores[play.drive.game.away])
+
+    prev_play = get_previous_play(play)
+    if get_possessing_team(drive) == get_home_team(game):
+        return pretty_score_str(get_home_score(prev_play), get_away_score(prev_play))
     else:
-        return pretty_score_str(
-            scores[play.drive.game.away], scores[play.drive.game.home])
+        return pretty_score_str(get_away_score(prev_play), get_home_score(prev_play))
 
 
 ### HISTORY FUNCTIONS ###
 
 
-def has_been_tweeted(play):
+def get_game_id(game):
+    """Given a play, get the id of that game.
+
+    Parameters:
+    game(dict): The game dictionary:
+
+    Returns:
+    string: The game id as a string.
+    """
+    return game['header']['id']
+
+
+def has_been_tweeted(play, drive, game):
     """Given a play, determine if that play has been tweeted already.
 
     Parameters:
-    play(nflgame.game.Play):
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
 
     Returns:
     bool: Whether that play has already been tweeted.
     """
 
     global tweeted_plays
-    game_plays = tweeted_plays.get(play.drive.game.gamekey, set())
-    for old_play in list(game_plays):
-        if old_play.data['posteam'] == play.data['posteam'] and \
-            old_play.data['qtr'] == play.data['qtr'] and \
-            abs(calc_seconds_from_time_str(old_play.data['time'])
-                - calc_seconds_from_time_str(play.data['time'])) < 50:
+    game_plays = tweeted_plays.get(get_game_id(game), set())
+    for old_play, old_drive in list(game_plays):
+        if get_possessing_team(old_drive) == get_possessing_team(
+                drive) and get_qtr_num(old_play) == get_qtr_num(play) and abs(
+                    calc_seconds_from_time_str(get_time_str(old_play)) -
+                    calc_seconds_from_time_str(get_time_str(play))) < 50:
             # Check if the team with possession and quarter are the same, and
             # if the game clock at the start of the play is within 50 seconds.
             return True
@@ -422,33 +555,23 @@ def has_been_tweeted(play):
     return False
 
 
-def update_tweeted_plays(play):
+def update_tweeted_plays(play, drive, game):
     """Given a play, update the dictionary of already tweeted plays.
 
     Parameters:
-    play(nflgame.game.Play): The play to put in the dictionary
-                             of already tweeted plays.
+    play(dict): The play dictionary.
+    drive(dict): The drive dictionary.
+    game(dict): The game dictionary.
     """
 
     global tweeted_plays
-    game_plays = tweeted_plays.get(play.drive.game.gamekey, set())
-    game_plays.add(play)
-    tweeted_plays[play.drive.game.gamekey] = game_plays
-
-
-def update_scores(game):
-    """Given a game, update the scores for each team.
-
-    Parameters:
-    game(nflgame.Game): The game to update scores for.
-    """
-
-    global scores
-    scores[game.home] = game.score_home
-    scores[game.away] = game.score_away
+    game_plays = tweeted_plays.get(get_game_id(game), set())
+    game_plays.add((play, drive))
+    tweeted_plays[get_game_id(game)] = game_plays
 
 
 ### PERCENTILE FUNCTIONS ###
+
 
 def load_historical_surrender_indices():
     """Load in saved surrender indices from punts from 2009 to 2019.
@@ -465,7 +588,7 @@ def load_current_surrender_indices():
     """Load in saved surrender indices from the current season's past punts.
 
     Returns:
-    numpy.array: A numpy array containing all loaded surrender indices.
+    numpy.array: A numpy array containing all surrender indices from the current season.
     """
 
     try:
@@ -495,23 +618,25 @@ def calculate_percentiles(surrender_index):
     surrender_index(float): The surrender index of a punt.
 
     Returns:
-    float: The percentile of the given surrender index among 2020 punts.
+    float: The percentile of the given surrender index among punts from the current season.
     float: The percentile of the given surrender index among punts since 2009.
     """
 
     global historical_surrender_indices
 
     current_surrender_indices = load_current_surrender_indices()
-    current_percentile = stats.percentileofscore(
-        current_surrender_indices, surrender_index, kind='strict')
+    current_percentile = stats.percentileofscore(current_surrender_indices,
+                                                 surrender_index,
+                                                 kind='strict')
 
     all_surrender_indices = np.concatenate(
         (historical_surrender_indices, current_surrender_indices))
-    historical_percentile = stats.percentileofscore(
-        all_surrender_indices, surrender_index, kind='strict')
+    historical_percentile = stats.percentileofscore(all_surrender_indices,
+                                                    surrender_index,
+                                                    kind='strict')
 
-    current_surrender_indices = np.append(
-        current_surrender_indices, surrender_index)
+    current_surrender_indices = np.append(current_surrender_indices,
+                                          surrender_index)
     write_current_surrender_indices(current_surrender_indices)
 
     return current_percentile, historical_percentile
@@ -530,24 +655,22 @@ def initialize_api():
 
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-    auth = tweepy.OAuthHandler(
-        credentials['consumer_key'], credentials['consumer_secret'])
-    auth.set_access_token(
-        credentials['access_token'], credentials['access_token_secret'])
+    auth = tweepy.OAuthHandler(credentials['consumer_key'],
+                               credentials['consumer_secret'])
+    auth.set_access_token(credentials['access_token'],
+                          credentials['access_token_secret'])
     api = tweepy.API(auth)
 
-    auth = tweepy.OAuthHandler(
-        credentials['90_consumer_key'], credentials['90_consumer_secret'])
-    auth.set_access_token(
-        credentials['90_access_token'], credentials['90_access_token_secret'])
+    auth = tweepy.OAuthHandler(credentials['90_consumer_key'],
+                               credentials['90_consumer_secret'])
+    auth.set_access_token(credentials['90_access_token'],
+                          credentials['90_access_token_secret'])
     ninety_api = tweepy.API(auth)
 
-    auth = tweepy.OAuthHandler(
-        credentials['cancel_consumer_key'],
-        credentials['cancel_consumer_secret'])
-    auth.set_access_token(
-        credentials['cancel_access_token'],
-        credentials['cancel_access_token_secret'])
+    auth = tweepy.OAuthHandler(credentials['cancel_consumer_key'],
+                               credentials['cancel_consumer_secret'])
+    auth.set_access_token(credentials['cancel_access_token'],
+                          credentials['cancel_access_token_secret'])
     cancel_api = tweepy.API(auth)
 
     return api, ninety_api, cancel_api
@@ -562,16 +685,13 @@ def initialize_twilio_client():
 
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-    return Client(
-        credentials['twilio_account_sid'],
-        credentials['twilio_auth_token'])
+    return Client(credentials['twilio_account_sid'],
+                  credentials['twilio_auth_token'])
 
 
 def send_heartbeat_message(should_repeat=True):
     """Send a heartbeat message every 24 hours to confirm the script is still running.
-
     """
-
     global twilio_client
 
     with open('credentials.json', 'r') as f:
@@ -599,16 +719,14 @@ def send_error_message(e):
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
         message = twilio_client.messages.create(
-            body="The Surrender Index script encountered an exception " + str(e) + ".",
+            body="The Surrender Index script encountered an exception " +
+            str(e) + ".",
             from_=credentials['from_phone_number'],
             to=credentials['to_phone_number'])
 
 
-def create_tweet_str(
-        play,
-        surrender_index,
-        current_percentile,
-        historical_percentile):
+def create_tweet_str(play, drive, game, surrender_index, current_percentile,
+                     historical_percentile):
     """Given a play, surrender index, and two percentiles, craft a string to tweet.
 
     Parameters:
@@ -622,28 +740,32 @@ def create_tweet_str(
     string: The string to tweet.
     """
 
-    play_str = play.data['posteam'] + \
-        ' decided to punt to ' + \
-        return_other_team(play) + \
-        ' from the ' + str(play.data['yrdln']) + \
-        ' on ' + get_num_str(play.data['down']) + \
-        ' & ' + str(play.data['ydstogo']) + \
-        ' with ' + get_pretty_time_str(play.data['time']) + \
-        ' remaining in ' + get_qtr_str(play.data['qtr']) + \
-        ' while ' + get_score_str(play) + '.'
+    if get_yrdln_int(play) == 50:
+        territory_str = '50'
+    elif is_in_opposing_territory(play):
+        territory_str = return_other_team(drive, game) + ' ' + str(get_yrdln_int(play))
+    else:
+        territory_str = get_possessing_team(drive) + ' ' + str(get_yrdln_int(play))
 
-    surrender_str = 'With a Surrender Index of ' + \
-                    str(round(surrender_index, 2)) + \
-                    ', this punt ranks at the ' + \
-                    get_num_str(current_percentile) + \
-                    ' percentile of cowardly punts of the 2020 season, and the ' + \
-                    get_num_str(historical_percentile) + \
-                    ' percentile of all punts since 2009.'
+    decided_str = get_possessing_team(drive) + ' decided to punt to ' + return_other_team(drive, game)
+    yrdln_str = ' from the ' + territory_str + ' on '
+    down_str = get_num_str(play['down']) + ' & ' + str(play['distance']) + 
+    clock_str = ' with ' + get_pretty_time_str(get_time_str(play)) + ' remaining in '
+    qtr_str = get_qtr_str(get_qtr_num(play)) + ' while ' + get_score_str(play, drive, game) + '.'
+
+    play_str = decided_str + yrdln_str + down_str + clock_str + qtr_str
+
+    surrender_str = 'With a Surrender Index of ' + str(
+        round(surrender_index, 2)
+    ) + ', this punt ranks at the ' + get_num_str(
+        current_percentile
+    ) + ' percentile of cowardly punts of the 2020 season, and the ' + get_num_str(
+        historical_percentile) + ' percentile of all punts since 2009.'
 
     return play_str + '\n\n' + surrender_str
 
 
-def tweet_play(play):
+def tweet_play(play, drive, game):
     """Given a play, tweet it (if it hasn't already been tweeted).
 
     Parameters:
@@ -654,15 +776,12 @@ def tweet_play(play):
     global ninety_api
     global cancel_api
 
-    if not has_been_tweeted(play):
-        surrender_index = calc_surrender_index(play)
+    if not has_been_tweeted(play, drive, game):
+        surrender_index = calc_surrender_index(play, drive, game)
         current_percentile, historical_percentile = calculate_percentiles(
             surrender_index)
-        tweet_str = create_tweet_str(
-            play,
-            surrender_index,
-            current_percentile,
-            historical_percentile)
+        tweet_str = create_tweet_str(play, drive, game, surrender_index,
+                                     current_percentile, historical_percentile)
 
         print(tweet_str)
         if should_tweet:
@@ -671,7 +790,8 @@ def tweet_play(play):
         # Post the status to the 90th percentile account.
         if current_percentile >= 90. and should_tweet:
             orig_status = ninety_api.update_status(tweet_str)
-            thread = threading.Thread(target=handle_cancel, args=(orig_status._json, tweet_str))
+            thread = threading.Thread(target=handle_cancel,
+                                      args=(orig_status._json, tweet_str))
             thread.start()
 
         update_tweeted_plays(play)
@@ -751,15 +871,12 @@ def check_reply(link):
     driver = get_driver()
     driver.get(link)
 
-    poll_title = driver.find_element_by_xpath(
-        "//*[contains(text(), 'votes')]")
+    poll_title = driver.find_element_by_xpath("//*[contains(text(), 'votes')]")
     poll_content = poll_title.find_element_by_xpath("./..")
     poll_result = poll_content.find_elements_by_tag_name("span")
     poll_values = [poll_result[2], poll_result[5]]
-    poll_floats = map(
-        lambda x: float(
-            x.get_attribute("innerHTML").strip('%')),
-        poll_values)
+    poll_floats = map(lambda x: float(x.get_attribute("innerHTML").strip('%')),
+                      poll_values)
 
     if len(poll_floats) != 2:
         driver.close()
@@ -782,7 +899,8 @@ def cancel_punt(orig_status, full_text):
 
     ninety_api.destroy_status(orig_status['id'])
     cancel_status = cancel_api.update_status(full_text)._json
-    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + cancel_status['id_str']
+    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + cancel_status[
+        'id_str']
 
     time.sleep(10)
     ninety_api.update_status(new_cancel_text)
@@ -797,8 +915,8 @@ def handle_cancel(orig_status, full_text):
     """
 
     try:
-        orig_link = 'https://twitter.com/surrender_idx90/status/' + \
-            orig_status['id_str']
+        orig_link = 'https://twitter.com/surrender_idx90/status/' + orig_status[
+            'id_str']
         post_reply_poll(orig_link)
         if check_reply(orig_link):
             cancel_punt(orig_status, full_text)
@@ -806,13 +924,14 @@ def handle_cancel(orig_status, full_text):
         print("An error occurred when trying to handle canceling a tweet")
         print(orig_status)
         print(e)
-        send_error_message("An error occurred when trying to handle canceling a tweet")
+        send_error_message(
+            "An error occurred when trying to handle canceling a tweet")
 
 
 ### MAIN FUNCTIONS ###
 
 
-def live_callback(active, completed, diffs):
+def live_callback(plays):
     """The callback for nflgame.live.run.
        This callback is called whenever new plays are downloaded by the API.
 
@@ -829,21 +948,136 @@ def live_callback(active, completed, diffs):
                                         last update.
     """
 
-    global sleep_time
     global tweeted_plays
-    sleep_time = 1
 
-    for diff in diffs:
-        for play in diff.plays:
-            if is_punt(play):
-                tweet_play(play)
+    for play, drive, game in plays:
+        if is_punt(play):
+            tweet_play(play, drive, game)
 
-    for game in active:
-        update_scores(game)
 
-    for game in completed:
-        if game.gamekey in tweeted_plays:
-            del tweeted_plays[game.gamekey]
+def update_current_year_games():
+    global current_year_games
+    now = datetime.now()
+    two_months_ago = now - timedelta(days=60)
+    scoreboard_urls = espn.get_all_scoreboard_urls("nfl", two_months_ago.year)
+    current_year_games = []
+    for scoreboard_url in scoreboard_urls:
+        data = None
+        backoff_time = 1.
+        while data == None:
+            try:
+                data = espn.get_url(scoreboard_url)
+            except:
+                time.sleep(backoff_time)
+                backoff_time *= 2.
+        for event in data['content']['sbData']['events']:
+            current_year_games.append(event)
+
+
+def get_active_game_ids():
+    global current_year_games
+    global completed_game_ids
+    global start_times
+
+    now = datetime.now()
+    active_game_ids = set()
+
+    for game in current_year_games:
+        if game['id'] in completed_game_ids:
+            # ignore any games that are marked completed (which is done by checking if espn says final)
+            continue
+        game_time = dateutil.parser.parse(
+            game['date']).replace(tzinfo=timezone.utc).astimezone(tz=None)
+        if game_time - timedelta(minutes=15) < now and game_time + timedelta(hours=6) > now:
+            # game should start within 15 minutes and not started more than 6 hours ago
+            active_game_ids.add(game['id'])
+            start_times[game['id']] = game_time
+
+    return active_game_ids
+
+
+def clean_games(active_game_ids):
+    """Clean any games that are no longer active out of the tweeted plays dict"""
+    global tweeted_plays
+    game_id_keys = tweeted_plays.keys()
+    for game_id in game_id_keys:
+        if game_id not in active_game_ids:
+            del tweeted_plays[game_id]
+
+def get_unique_str_from_play(play):
+    return str(play['period']) + str(play['homeScore']) + str(play(['away_score'])) + play['clock']['displayValue'] + play['text']
+
+def get_new_plays_from_games(old_game, new_game):
+    play_intersections = []
+    old_plays = set()
+
+    if 'drives' in old_game:
+        for drive_type, drives in old_game['drives'].items():
+            for drive in drives:
+                for play in plays:
+                    old_plays.add(get_unique_str_from_play(play))
+
+    if 'drives' in new_game:
+        for drive_type, drives in new_game['drives'].items():
+            for drive in drives:
+                for play in plays:
+                    if get_unique_str_from_play(play) not in old_plays:
+                        play_intersections.append((play, drive, new_game))
+
+    return play_intersections
+
+
+def get_new_play_tuples(game_ids):
+    global completed_game_ids
+    play_tuples = []
+
+    for game_id in game_ids:
+        # get game data
+        data = None
+        backoff_time = 1.
+        url = espn.get_game_url("playbyplay", "nfl", int(game_id))
+        while data == None:
+            try:
+                data = espn.get_url(url)
+            except:
+                time.sleep(backoff_time)
+                backoff_time *= 3.
+        new_game = data['gamepackageJSON']
+
+        # mark game as completed if necessary
+        if new_game['header']['competitions'][0]['status']['type'][
+                'completed']:
+            completed_game_ids.add(str(new_game['header']['id']))
+
+        # open old game file if it exists
+        game_file = "game_data/" + game_id + ".json"
+        if os.path.exists(game_file):
+            with open(game_file, "r") as f:
+                old_data = json.load(f)
+                old_game = old_data['gamepackageJSON']
+        else:
+            old_game = {}
+
+        play_tuples.extend(get_new_plays_from_games(old_game, new_game))
+
+        # write new game file to disk
+        with open(game_file, "w") as f:
+            json.dump(data, f)
+
+        # wait five seconds (plus/minus some randomness) to avoid sending too many requests
+        time.sleep(5. + random.uniform(-2, 2))
+
+    return play_tuples
+
+
+def download_data_for_active_games():
+    active_game_ids = get_active_game_ids()
+    if len(active_game_ids) == 0:
+        print("No games active. Sleeping for 15 minutes...")
+        time.sleep(15)
+    clean_games(active_game_ids)
+    new_play_tuples = get_new_play_tuples(active_game_ids)
+    live_callback(new_play_tuples)
 
 
 def main():
@@ -857,9 +1091,13 @@ def main():
     global should_tweet
     global sleep_time
     global twilio_client
+    global completed_game_ids
 
-    parser = argparse.ArgumentParser(description="Run the Surrender Index bot until 3 AM.")
-    parser.add_argument('--disableTweeting', action='store_true', dest='disableTweeting')
+    parser = argparse.ArgumentParser(
+        description="Run the Surrender Index bot.")
+    parser.add_argument('--disableTweeting',
+                        action='store_true',
+                        dest='disableTweeting')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
 
@@ -868,23 +1106,35 @@ def main():
     twilio_client = initialize_twilio_client()
     sleep_time = 1
 
-    send_heartbeat_message(should_repeat=False)
+    completed_game_ids = set()
+
+    if not os.path.exists("game_data/"):
+        os.makedirs("game_data")
 
     should_continue = True
     while should_continue:
         try:
-            print("starting...")
-            # restart at 3 AM every day, since the live function fails when the NFL week changes
-            now = datetime.datetime.now()
+            # update current year games at 3 AM every day
+            send_heartbeat_message(should_repeat=False)
+            update_current_year_games()
+            now = datetime.now()
             if now.hour < 3:
-                stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
+                stop_date = now.replace(hour=3,
+                                        minute=0,
+                                        second=0,
+                                        microsecond=0)
             else:
-                now += datetime.timedelta(days=1)
-                stop_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
-            nflgame.live.run(live_callback, active_interval=15,
-                             inactive_interval=900, stop=stop_date)
-            print(datetime.datetime.now())
-            print("ending...")
+                now += timedelta(days=1)
+                stop_date = now.replace(hour=3,
+                                        minute=0,
+                                        second=0,
+                                        microsecond=0)
+
+            while datetime.now() < stop_date:
+                download_data_for_active_games()
+                sleep_time = 1.
+
+        except KeyboardInterrupt:
             should_continue = False
         except Exception as e:
             # When an exception occurs: log it, send a message, and sleep for an
@@ -896,6 +1146,7 @@ def main():
 
             time.sleep(sleep_time * 60)
             sleep_time *= 2
+
 
 if __name__ == "__main__":
     main()
