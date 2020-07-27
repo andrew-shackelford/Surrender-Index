@@ -630,7 +630,7 @@ def has_been_tweeted(play, drive, game, game_id):
     """
 
     global tweeted_plays
-    game_plays = tweeted_plays.get(game_id, set())
+    game_plays = tweeted_plays.get(game_id, [])
     for old_play in list(game_plays):
         old_possessing_team, old_qtr, old_time = old_play.split('_')
         new_possessing_team, new_qtr, new_time = play_hash(play, drive, game).split('_')
@@ -669,8 +669,8 @@ def update_tweeted_plays(play, drive, game, game_id):
     """
 
     global tweeted_plays
-    game_plays = tweeted_plays.get(game_id, set())
-    game_plays.add(play_hash(play, drive, game))
+    game_plays = tweeted_plays.get(game_id, [])
+    game_plays.append(play_hash(play, drive, game))
     tweeted_plays[game_id] = game_plays
     with open('tweeted_plays.json', 'w') as f:
         json.dump(tweeted_plays, f)
@@ -938,20 +938,27 @@ def find_punters_for_team(team):
 def download_punters():
     global punters
 
-    #TODO remove
-    """
     punters = {}
-    with open('punters.json', 'r') as f:
-        punters_list = json.load(f)
-        for key, value in punters_list.items():
-            punters[key] = set(value)
-    return
-    """
 
-    punters = {}
-    team_abbreviations = ['HOU', 'KC', 'SEA', 'ATL', 'NYJ', 'BUF', 'CHI', 'DET', 'GB', 'MIN', 'MIA', 'NE', 'PHI', 'WSH', 'LV', 'CAR', 'IND', 'JAX', 'CLE', 'BAL', 'LAC', 'CIN', 'TB', 'NO', 'ARI', 'SF', 'DAL', 'LAR', 'PIT', 'NYG', 'TEN', 'DEN']
-    for team in team_abbreviations:
-        punters[team] = find_punters_for_team(team)
+    if os.path.exists('punters.json'):
+        file_mod_time = os.path.getmtime('punters.json')
+    else:
+        file_mod_time = 0.
+    if time.time() - file_mod_time < 60 * 60 * 12:
+        # if file modified within past 12 hours
+        with open('punters.json', 'r') as f:
+            punters_list = json.load(f)
+            for key, value in punters_list.items():
+                punters[key] = set(value)
+    else:
+        team_abbreviations = ['HOU', 'KC', 'SEA', 'ATL', 'NYJ', 'BUF', 'CHI', 'DET', 'GB', 'MIN', 'MIA', 'NE', 'PHI', 'WSH', 'LV', 'CAR', 'IND', 'JAX', 'CLE', 'BAL', 'LAC', 'CIN', 'TB', 'NO', 'ARI', 'SF', 'DAL', 'LAR', 'PIT', 'NYG', 'TEN', 'DEN']
+        for team in team_abbreviations:
+            punters[team] = find_punters_for_team(team)
+        punters_list = {}
+        for key, value in punters.items():
+            punters_list[key] = list(value)
+        with open('punters.json', 'w') as f:
+            json.dump(punters_list, f)
 
 
 def get_inner_html_of_element(element):
@@ -1282,6 +1289,7 @@ def main():
     sleep_time = 1
 
     completed_game_ids = set()
+    load_tweeted_plays_dict()
 
     if not os.path.exists("game_data/"):
         os.makedirs("game_data")
