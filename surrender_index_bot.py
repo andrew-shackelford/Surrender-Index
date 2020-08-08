@@ -45,7 +45,7 @@ should_tweet = True
 
 ### SELENIUM FUNCTIONS ###
 
-def get_game_driver(headless=True):
+def get_game_driver(headless=False):
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("headless")
@@ -56,13 +56,13 @@ def get_game_driver(headless=True):
     else:
         raise Exception('No chromedriver found')
 
-def get_twitter_driver(headless=True):
+def get_twitter_driver(headless=False):
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
         username = credentials['cancel_email']
         password = credentials['cancel_password']
 
-    driver = get_game_driver(headless)
+    driver = get_game_driver(headless=headless)
     driver.implicitly_wait(10)
     driver.get('https://twitter.com/login')
 
@@ -886,7 +886,7 @@ def main():
     should_continue = True
     while should_continue:
         try:
-            # update current year games at 3 AM every day
+            # update current year games and punters at 3 AM every day
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
             download_punters()
