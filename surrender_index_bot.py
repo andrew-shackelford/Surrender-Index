@@ -113,10 +113,10 @@ def get_plays_from_drive(drive):
                 if 'yard_line' in play_dct:
                     good_plays.append(play_dct)
             except Exception as e:
-                print("Exception occurred constructing play")
-                print(play.get_attribute("innerHTML"))
-                print(drive)
-                print(e)
+                time_print("Exception occurred constructing play")
+                time_print(play.get_attribute("innerHTML"))
+                time_print(drive)
+                time_print(e)
                 send_error_message(e, "An error occurred when trying to construct a play")
     return good_plays
 
@@ -447,6 +447,7 @@ def download_punters():
             'WSH',
         ]
         for team in team_abbreviations:
+            time_print("Downloading punters for " + team)
             punters[team] = find_punters_for_team(team)
         punters_list = {}
         for key, value in punters.items():
@@ -686,7 +687,7 @@ def tweet_play(play, drive, drives, game, game_id):
         tweet_str = create_tweet_str(play, drive, drives, game, surrender_index,
                                      current_percentile, historical_percentile)
 
-        print(tweet_str)
+        time_print(tweet_str)
         if should_tweet:
             api.update_status(tweet_str)
 
@@ -763,13 +764,19 @@ def handle_cancel(orig_status, full_text):
         if check_reply(orig_link):
             cancel_punt(orig_status, full_text)
     except Exception as e:
-        print("An error occurred when trying to handle canceling a tweet")
-        print(orig_status)
-        print(e)
+        time_print("An error occurred when trying to handle canceling a tweet")
+        time_print(orig_status)
+        time_print(e)
         send_error_message(e, "An error occurred when trying to handle canceling a tweet")
 
 
 ### CURRENT GAME FUNCTIONS ###
+
+def time_print(str):
+    print(get_current_time_str() + ": " + str)
+
+def get_current_time_str():
+    return datetime.now().strftime("%b %-d at %-I:%M:%S %p")
 
 def get_now():
     local = tz.gettz()
@@ -825,8 +832,8 @@ def download_data_for_active_games():
     global games
     active_game_ids = get_active_game_ids()
     if len(active_game_ids) == 0:
-        print("No games active. Sleeping for 15 minutes...")
-        time.sleep(15 * 60)
+        time_print("No games active. Sleeping for 15 minutes...")
+        time.sleep(14 * 60) # We sleep for another minute in the live callback
     clean_games(active_game_ids)
     for game_id in active_game_ids:
         if game_id not in games:
@@ -844,7 +851,7 @@ def live_callback():
     global games
     start_time = time.time()
     for game_id, game in games.items():
-        print('Getting data for game ID ' + game_id)
+        time_print('Getting data for game ID ' + game_id)
         drives = get_all_drives(game)
         for index, drive in enumerate(drives):
             drive_start_time = time.time()
@@ -871,6 +878,11 @@ def main():
                         dest='disableTweeting')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
+
+    if should_tweet:
+        print("Tweeting Enabled")
+    else:
+        print("Tweeting Disabled")
 
     api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
@@ -913,9 +925,9 @@ def main():
         except Exception as e:
             # When an exception occurs: log it, send a message, and sleep for an
             # exponential backoff time
-            print("Error occurred:")
-            print(e)
-            print("Sleeping for " + str(sleep_time) + " minutes")
+            time_print("Error occurred:")
+            time_print(e)
+            time_print("Sleeping for " + str(sleep_time) + " minutes")
             send_error_message(e)
             time.sleep(sleep_time * 60)
             sleep_time *= 2
