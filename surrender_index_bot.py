@@ -824,7 +824,7 @@ def get_active_game_ids():
 
 def clean_games(active_game_ids):
     global games
-    for game_id in games.keys():
+    for game_id in list(games.keys()):
         if game_id not in active_game_ids:
             games[game_id].quit()
             del games[game_id]
