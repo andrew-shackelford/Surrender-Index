@@ -42,19 +42,22 @@ historical_surrender_indices = None
 # Whether the bot should tweet out any punts
 should_tweet = True
 
-
 ### SELENIUM FUNCTIONS ###
+
 
 def get_game_driver(headless=False):
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("headless")
     if sys.platform.startswith('darwin'):
-        return webdriver.Chrome(executable_path='./chromedriver_mac', options=options)
+        return webdriver.Chrome(executable_path='./chromedriver_mac',
+                                options=options)
     elif sys.platform.startswith('linux'):
-        return webdriver.Chrome(executable_path='./chromedriver_linux', options=options)
+        return webdriver.Chrome(executable_path='./chromedriver_linux',
+                                options=options)
     else:
         raise Exception('No chromedriver found')
+
 
 def get_twitter_driver(headless=False):
     with open('credentials.json', 'r') as f:
@@ -74,17 +77,21 @@ def get_twitter_driver(headless=False):
     driver.find_element_by_class_name("EdgeButtom--medium").click()
     return driver
 
+
 def get_inner_html_of_element(element):
     return element.get_attribute("innerHTML")
+
 
 def get_inner_html_of_elements(elements):
     return list(map(get_inner_html_of_element, elements))
 
+
 def construct_play_from_element(element):
     title = get_inner_html_of_element(element.find_element_by_tag_name("h3"))
-    desc = get_inner_html_of_element(element.find_element_by_tag_name("p").find_element_by_tag_name("span"))
+    desc = get_inner_html_of_element(
+        element.find_element_by_tag_name("p").find_element_by_tag_name("span"))
     desc = desc.lstrip().rstrip()
-        
+
     play = {}
     if len(title) > 5:
         down_dist, yrdln = title.split("at")
@@ -92,16 +99,17 @@ def construct_play_from_element(element):
         play['down'] = down_dist[:3]
         play['dist'] = down_dist.rstrip(" ").split(" ")[-1]
         if 'goal' in play['dist'].lower():
-            play['dist'] = play['yard_line'].split(" ")[1]       
-            
+            play['dist'] = play['yard_line'].split(" ")[1]
+
     start_index = desc.find("(") + 1
     end_index = desc.find(")")
     time_qtr = desc[start_index:end_index]
     play['time'] = time_qtr.split("-")[0].rstrip(" ")
     play['qtr'] = time_qtr.split("-")[1].lstrip(" ")
-    play['text'] = desc[end_index+1:].lstrip(" ")
-    
+    play['text'] = desc[end_index + 1:].lstrip(" ")
+
     return play
+
 
 def get_plays_from_drive(drive):
     all_plays = drive.find_elements_by_tag_name("li")
@@ -117,14 +125,17 @@ def get_plays_from_drive(drive):
                 time_print(play.get_attribute("innerHTML"))
                 time_print(drive)
                 time_print(e)
-                send_error_message(e, "An error occurred when trying to construct a play")
+                send_error_message(
+                    e, "An error occurred when trying to construct a play")
     return good_plays
+
 
 def get_all_drives(game):
     return game.find_elements_by_class_name("drive-list")
 
 
 ### POSSESSION DETERMINATION FUNCTIONS ###
+
 
 def get_possessing_team_from_play_roster(play, game):
     global punters
@@ -140,12 +151,13 @@ def get_possessing_team_from_play_roster(play, game):
     if home_possession == away_possession:
         return ''
     else:
-        return home if home_possession else away    
+        return home if home_possession else away
+
 
 def get_possessing_team_from_punt_distance(play, game):
     try:
         split = play['text'].split(" ")
-        if split[1] == 'punts':     
+        if split[1] == 'punts':
             if int(split[2]) > int(play['yard_line'].split(" ")[1]):
                 return play['yard_line'].split(" ")[0]
             if 'touchback' in play['text'].lower():
@@ -153,7 +165,8 @@ def get_possessing_team_from_punt_distance(play, game):
                 if punt_distance > 50:
                     return play['yard_line'].split(" ")[0]
                 else:
-                    return return_other_team(game, play['yard_line'].split(" ")[0])
+                    return return_other_team(game,
+                                             play['yard_line'].split(" ")[0])
             punt_distance = int(split[2]) + int(split[6])
             if punt_distance > 50:
                 return play['yard_line'].split(" ")[0]
@@ -163,12 +176,14 @@ def get_possessing_team_from_punt_distance(play, game):
     except:
         return ''
 
+
 def get_possessing_team_from_drive(drive):
     accordion_header = drive.find_element_by_xpath('../../..')
     team_logo = accordion_header.find_element_by_class_name('team-logo')
     img_name = team_logo.get_attribute("src")
     index = img_name.find(".png")
-    return img_name[index-3:index].lstrip("/").upper()
+    return img_name[index - 3:index].lstrip("/").upper()
+
 
 def get_possessing_team(play, drive, game):
     possessing_team = get_possessing_team_from_play_roster(play, game)
@@ -182,15 +197,19 @@ def get_possessing_team(play, drive, game):
 
 ### TEAM ABBREVIATION FUNCTIONS ###
 
+
 def get_abbreviations(game):
     elements = game.find_elements_by_class_name("abbrev")
     return get_inner_html_of_elements(elements)
 
+
 def get_home_team(game):
     return get_abbreviations(game)[1]
 
+
 def get_away_team(game):
     return get_abbreviations(game)[0]
+
 
 def return_other_team(game, team):
     if get_home_team(game) == team:
@@ -201,8 +220,10 @@ def return_other_team(game, team):
 
 ### GAME INFO FUNCTIONS ###
 
+
 def get_game_id(game):
     return game.current_url[-14:-5]
+
 
 def get_game_header(game):
     header_eles = game.find_elements_by_css_selector('div.game-details.header')
@@ -211,9 +232,11 @@ def get_game_header(game):
     else:
         return ""
 
+
 def is_final(game):
     element = game.find_element_by_class_name("status-detail")
     return 'final' in get_inner_html_of_element(element).lower()
+
 
 def is_postseason(game):
     header = get_game_header(game).lower()
@@ -222,36 +245,45 @@ def is_postseason(game):
 
 ### SCORE FUNCTIONS ###
 
+
 def get_scores(game):
     parent_elements = game.find_elements_by_class_name("score-container")
-    elements = list(map(lambda x: x.find_element_by_tag_name("div"), parent_elements))
+    elements = list(
+        map(lambda x: x.find_element_by_tag_name("div"), parent_elements))
     return get_inner_html_of_elements(elements)
+
 
 def get_home_score(play, drive, drives, game):
     drive_index = drives.index(drive)
     return get_drive_scores(drives, drive_index, game)[1]
 
+
 def get_away_score(play, drive, drives, game):
     drive_index = drives.index(drive)
     return get_drive_scores(drives, drive_index, game)[0]
+
 
 def get_drive_scores(drives, index, game):
     if index == 0:
         drive = drives[0]
     else:
         if is_final(game):
-            drive = drives[index-1]
+            drive = drives[index - 1]
         else:
-            drive = drives[index+1]
+            drive = drives[index + 1]
     accordion_header = drive.find_element_by_xpath('../../..')
-    away_parent = accordion_header.find_element_by_class_name('home') # this is intentional, ESPN is dumb
-    home_parent = accordion_header.find_element_by_class_name('away') # this is intentional, ESPN is dumb
+    away_parent = accordion_header.find_element_by_class_name(
+        'home')  # this is intentional, ESPN is dumb
+    home_parent = accordion_header.find_element_by_class_name(
+        'away')  # this is intentional, ESPN is dumb
     away_score_element = away_parent.find_element_by_class_name('team-score')
     home_score_element = home_parent.find_element_by_class_name('team-score')
-    return get_inner_html_of_element(away_score_element), get_inner_html_of_element(home_score_element)
+    return get_inner_html_of_element(
+        away_score_element), get_inner_html_of_element(home_score_element)
 
 
 ### PLAY FUNCTIONS ###
+
 
 def is_punt(play):
     text = play['text'].lower()
@@ -265,8 +297,10 @@ def is_punt(play):
         return True
     return False
 
+
 def get_yrdln_int(play):
     return int(play['yard_line'].split(" ")[-1])
+
 
 def get_field_side(play):
     if '50' in play['yard_line']:
@@ -274,8 +308,10 @@ def get_field_side(play):
     else:
         return play['yard_line'].split(" ")[0]
 
+
 def get_time_str(play):
     return play['time']
+
 
 def get_qtr_num(play):
     qtr = play['qtr']
@@ -288,21 +324,27 @@ def get_qtr_num(play):
     else:
         return int(qtr[0])
 
+
 def is_in_opposing_territory(play, drive, game):
     return get_field_side(play) != get_possessing_team(play, drive, game)
+
 
 def get_dist_num(play):
     return int(play['dist'])
 
+
 def get_unique_str_from_play(play):
-    return str(play['period']) + str(play['homeScore']) + str(play(['away_score'])) + play['clock']['displayValue'] + play['text']
+    return str(play['period']) + str(play['homeScore']) + str(
+        play(['away_score'])) + play['clock']['displayValue'] + play['text']
 
 
 ### CALCULATION HELPER FUNCTIONS ###
 
+
 def calc_seconds_from_time_str(time_str):
     minutes, seconds = map(int, time_str.split(":"))
     return minutes * 60 + seconds
+
 
 def calc_seconds_since_halftime(play, game):
     # Regular season games have only one overtime of length 10 minutes
@@ -313,6 +355,7 @@ def calc_seconds_since_halftime(play, game):
         seconds_elapsed_in_qtr = (15 * 60) - calc_seconds_from_time_str(
             get_time_str(play))
     return max(seconds_elapsed_in_qtr + (15 * 60) * (get_qtr_num(play) - 3), 0)
+
 
 def calc_score_diff(play, drive, drives, game):
     drive_index = drives.index(drive)
@@ -325,6 +368,7 @@ def calc_score_diff(play, drive, drives, game):
 
 ### SURRENDER INDEX FUNCTIONS ###
 
+
 def calc_field_pos_score(play, drive, game):
     try:
         if get_yrdln_int(play) == 50:
@@ -335,6 +379,7 @@ def calc_field_pos_score(play, drive, game):
             return (1.2)**(50 - get_yrdln_int(play)) * ((1.1)**(10))
     except BaseException:
         return 0.
+
 
 def calc_yds_to_go_multiplier(play):
     dist = get_dist_num(play)
@@ -349,9 +394,10 @@ def calc_yds_to_go_multiplier(play):
     else:
         return 1.
 
+
 def calc_score_multiplier(play, drive, drives, game):
     score_diff = calc_score_diff(play, drive, drives, game)
-    
+
     if score_diff > 0:
         return 1.
     elif score_diff == 0:
@@ -361,20 +407,26 @@ def calc_score_multiplier(play, drive, drives, game):
     else:
         return 4.
 
+
 def calc_clock_multiplier(play, drive, drives, game):
-    if calc_score_diff(play, drive, drives, game) <= 0 and get_qtr_num(play) > 2:
+    if calc_score_diff(play, drive, drives,
+                       game) <= 0 and get_qtr_num(play) > 2:
         seconds_since_halftime = calc_seconds_since_halftime(play, game)
         return ((seconds_since_halftime * 0.001)**3.) + 1.
     else:
         return 1.
 
+
 def calc_surrender_index(play, drive, drives, game):
     return calc_field_pos_score(
-        play, drive, game) * calc_yds_to_go_multiplier(play) * calc_score_multiplier(
-            play, drive, drives, game) * calc_clock_multiplier(play, drive, drives, game)
+        play, drive,
+        game) * calc_yds_to_go_multiplier(play) * calc_score_multiplier(
+            play, drive, drives, game) * calc_clock_multiplier(
+                play, drive, drives, game)
 
 
 ### PUNTER FUNCTIONS ###
+
 
 def find_punters_for_team(team):
     roster = get_game_driver()
@@ -382,7 +434,8 @@ def find_punters_for_team(team):
     roster_link = base_link + team
     roster.get(roster_link)
     header = roster.find_element_by_css_selector("div.Special.Teams")
-    parents = header.find_elements_by_css_selector("td.Table__TD:not(.Table__TD--headshot)")
+    parents = header.find_elements_by_css_selector(
+        "td.Table__TD:not(.Table__TD--headshot)")
     punters = set()
     for parent in parents:
         try:
@@ -397,6 +450,7 @@ def find_punters_for_team(team):
         punters.add("C.Wadman")
     roster.quit()
     return punters
+
 
 def download_punters():
     global punters
@@ -458,11 +512,13 @@ def download_punters():
 
 ### STRING FORMAT FUNCTIONS ###
 
+
 def get_pretty_time_str(time_str):
     if time_str[0] == '0':
         return time_str[1:]
     else:
         return time_str
+
 
 def get_qtr_str(qtr):
     if qtr < 5:
@@ -471,6 +527,7 @@ def get_qtr_str(qtr):
         return 'OT'
     else:
         return str(qtr - 4) + ' OT'
+
 
 def get_ordinal_suffix(num):
     last_digit = str(num)[-1]
@@ -482,6 +539,7 @@ def get_ordinal_suffix(num):
         return 'rd'
     else:
         return 'th'
+
 
 def get_num_str(num):
     rounded_num = int(num)  # round down
@@ -502,6 +560,7 @@ def get_num_str(num):
 
     return str(rounded_num) + get_ordinal_suffix(rounded_num)
 
+
 def pretty_score_str(score_1, score_2):
     if score_1 > score_2:
         ret_str = 'winning '
@@ -513,34 +572,41 @@ def pretty_score_str(score_1, score_2):
     ret_str += str(score_1) + ' to ' + str(score_2)
     return ret_str
 
+
 def get_score_str(play, drive, drives, game):
     if get_possessing_team(play, drive, game) == get_home_team(game):
-        return pretty_score_str(get_home_score(play, drive, drives, game), get_away_score(play, drive, drives, game))
+        return pretty_score_str(get_home_score(play, drive, drives, game),
+                                get_away_score(play, drive, drives, game))
     else:
-        return pretty_score_str(get_away_score(play, drive, drives, game), get_home_score(play, drive, drives, game))
+        return pretty_score_str(get_away_score(play, drive, drives, game),
+                                get_home_score(play, drive, drives, game))
 
 
 ### HISTORY FUNCTIONS ###
+
 
 def has_been_tweeted(play, drive, game, game_id):
     global tweeted_plays
     game_plays = tweeted_plays.get(game_id, [])
     for old_play in list(game_plays):
         old_possessing_team, old_qtr, old_time = old_play.split('_')
-        new_possessing_team, new_qtr, new_time = play_hash(play, drive, game).split('_')
+        new_possessing_team, new_qtr, new_time = play_hash(play, drive,
+                                                           game).split('_')
         if old_possessing_team == new_possessing_team and old_qtr == new_qtr and abs(
-                    calc_seconds_from_time_str(old_time) -
-                    calc_seconds_from_time_str(new_time)) < 50:
+                calc_seconds_from_time_str(old_time) -
+                calc_seconds_from_time_str(new_time)) < 50:
             # Check if the team with possession and quarter are the same, and
             # if the game clock at the start of the play is within 50 seconds.
             return True
     return False
+
 
 def play_hash(play, drive, game):
     possessing_team = get_possessing_team(play, drive, game)
     qtr = play['qtr']
     time = play['time']
     return possessing_team + '_' + qtr + '_' + time
+
 
 def load_tweeted_plays_dict():
     global tweeted_plays
@@ -549,6 +615,7 @@ def load_tweeted_plays_dict():
             tweeted_plays = json.load(f)
     except:
         tweeted_plays = {}
+
 
 def update_tweeted_plays(play, drive, game, game_id):
     global tweeted_plays
@@ -561,9 +628,11 @@ def update_tweeted_plays(play, drive, game, game_id):
 
 ### PERCENTILE FUNCTIONS ###
 
+
 def load_historical_surrender_indices():
     with open('2009-2019_surrender_indices.npy', 'rb') as f:
         return np.load(f)
+
 
 def load_current_surrender_indices():
     try:
@@ -572,9 +641,11 @@ def load_current_surrender_indices():
     except BaseException:
         return np.array([])
 
+
 def write_current_surrender_indices(surrender_indices):
     with open('current_surrender_indices.npy', 'wb') as f:
         np.save(f, surrender_indices)
+
 
 def calculate_percentiles(surrender_index):
     global historical_surrender_indices
@@ -599,6 +670,7 @@ def calculate_percentiles(surrender_index):
 
 ### TWITTER FUNCTIONS ###
 
+
 def initialize_api():
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
@@ -622,11 +694,13 @@ def initialize_api():
 
     return api, ninety_api, cancel_api
 
+
 def initialize_twilio_client():
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
     return Client(credentials['twilio_account_sid'],
                   credentials['twilio_auth_token'])
+
 
 def send_heartbeat_message(should_repeat=True):
     global twilio_client
@@ -643,6 +717,7 @@ def send_heartbeat_message(should_repeat=True):
             break
         time.sleep(60 * 60 * 24)
 
+
 def send_error_message(e, body="An error occurred"):
     global twilio_client
     with open('credentials.json', 'r') as f:
@@ -653,18 +728,22 @@ def send_error_message(e, body="An error occurred"):
                 from_=credentials['from_phone_number'],
                 to=credentials['to_phone_number'])
 
-def create_tweet_str(play, drive, drives, game, surrender_index, current_percentile,
-                     historical_percentile):
+
+def create_tweet_str(play, drive, drives, game, surrender_index,
+                     current_percentile, historical_percentile):
     if get_yrdln_int(play) == 50:
         territory_str = '50'
     else:
         territory_str = play['yard_line']
-    
-    decided_str = get_possessing_team(play, drive, game) + ' decided to punt to ' + return_other_team(game, get_possessing_team(play, drive, game))
+
+    decided_str = get_possessing_team(
+        play, drive, game) + ' decided to punt to ' + return_other_team(
+            game, get_possessing_team(play, drive, game))
     yrdln_str = ' from the ' + territory_str + ' on '
     down_str = play['down'] + ' & ' + play['dist']
     clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in '
-    qtr_str = play['qtr'] + ' while ' + get_score_str(play, drive, drives, game) + '.'
+    qtr_str = play['qtr'] + ' while ' + get_score_str(play, drive, drives,
+                                                      game) + '.'
 
     play_str = decided_str + yrdln_str + down_str + clock_str + qtr_str
 
@@ -677,6 +756,7 @@ def create_tweet_str(play, drive, drives, game, surrender_index, current_percent
 
     return play_str + '\n\n' + surrender_str
 
+
 def tweet_play(play, drive, drives, game, game_id):
     global api
     global ninety_api
@@ -687,8 +767,9 @@ def tweet_play(play, drive, drives, game, game_id):
         surrender_index = calc_surrender_index(play, drive, drives, game)
         current_percentile, historical_percentile = calculate_percentiles(
             surrender_index)
-        tweet_str = create_tweet_str(play, drive, drives, game, surrender_index,
-                                     current_percentile, historical_percentile)
+        tweet_str = create_tweet_str(play, drive, drives, game,
+                                     surrender_index, current_percentile,
+                                     historical_percentile)
 
         time_print(tweet_str)
         if should_tweet:
@@ -705,6 +786,7 @@ def tweet_play(play, drive, drives, game, game_id):
 
 
 ### CANCEL FUNCTIONS ###
+
 
 def post_reply_poll(link):
     driver = get_twitter_driver()
@@ -728,6 +810,7 @@ def post_reply_poll(link):
     time.sleep(10)
     driver.close()
 
+
 def check_reply(link):
     time.sleep(60 * 60)  # Wait one hour to check reply
     driver = get_twitter_driver()
@@ -747,6 +830,7 @@ def check_reply(link):
         driver.close()
         return poll_floats[0] >= 66.67
 
+
 def cancel_punt(orig_status, full_text):
     global ninety_api
     global cancel_api
@@ -759,6 +843,7 @@ def cancel_punt(orig_status, full_text):
     time.sleep(10)
     ninety_api.update_status(new_cancel_text)
 
+
 def handle_cancel(orig_status, full_text):
     try:
         orig_link = 'https://twitter.com/surrender_idx90/status/' + orig_status[
@@ -770,20 +855,25 @@ def handle_cancel(orig_status, full_text):
         time_print("An error occurred when trying to handle canceling a tweet")
         time_print(orig_status)
         time_print(e)
-        send_error_message(e, "An error occurred when trying to handle canceling a tweet")
+        send_error_message(
+            e, "An error occurred when trying to handle canceling a tweet")
 
 
 ### CURRENT GAME FUNCTIONS ###
 
+
 def time_print(message):
     print(get_current_time_str() + ": " + str(message))
+
 
 def get_current_time_str():
     return datetime.now().strftime("%b %-d at %-I:%M:%S %p")
 
+
 def get_now():
     local = tz.gettz()
     return datetime.now(tz=local)
+
 
 def update_current_year_games():
     global current_year_games
@@ -804,6 +894,7 @@ def update_current_year_games():
         for event in data['content']['sbData']['events']:
             current_year_games.append(event)
 
+
 def get_active_game_ids():
     global current_year_games
     global completed_game_ids
@@ -817,10 +908,12 @@ def get_active_game_ids():
             continue
         game_time = parser.parse(
             game['date']).replace(tzinfo=timezone.utc).astimezone(tz=None)
-        if game_time - timedelta(minutes=15) < now and game_time + timedelta(hours=6) > now:
+        if game_time - timedelta(minutes=15) < now and game_time + timedelta(
+                hours=6) > now:
             # game should start within 15 minutes and not started more than 6 hours ago
             active_game_ids.add(game['id'])
     return active_game_ids
+
 
 def clean_games(active_game_ids):
     global games
@@ -829,12 +922,13 @@ def clean_games(active_game_ids):
             games[game_id].quit()
             del games[game_id]
 
+
 def download_data_for_active_games():
     global games
     active_game_ids = get_active_game_ids()
     if len(active_game_ids) == 0:
         time_print("No games active. Sleeping for 15 minutes...")
-        time.sleep(14 * 60) # We sleep for another minute in the live callback
+        time.sleep(14 * 60)  # We sleep for another minute in the live callback
     clean_games(active_game_ids)
     for game_id in active_game_ids:
         if game_id not in games:
@@ -847,6 +941,7 @@ def download_data_for_active_games():
 
 
 ### MAIN FUNCTIONS ###
+
 
 def live_callback():
     global games
@@ -861,6 +956,7 @@ def live_callback():
                     tweet_play(play, drive, drives, game, game_id)
     while (time.time() < start_time + 60):
         time.sleep(1)
+
 
 def main():
     global api
