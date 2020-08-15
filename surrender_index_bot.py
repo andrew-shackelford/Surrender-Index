@@ -381,7 +381,7 @@ def find_punters_for_team(team):
     base_link = 'https://www.espn.com/nfl/team/roster/_/name/'
     roster_link = base_link + team
     roster.get(roster_link)
-    header = roster.find_element_by_css_selector("section.Special.Teams")
+    header = roster.find_element_by_css_selector("div.Special.Teams")
     parents = header.find_elements_by_css_selector("td.Table__TD:not(.Table__TD--headshot)")
     punters = set()
     for parent in parents:
@@ -630,13 +630,15 @@ def initialize_twilio_client():
 
 def send_heartbeat_message(should_repeat=True):
     global twilio_client
+    global should_text
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
     while True:
-        message = twilio_client.messages.create(
-            body="The Surrender Index script is up and running.",
-            from_=credentials['from_phone_number'],
-            to=credentials['to_phone_number'])
+        if should_text:
+            message = twilio_client.messages.create(
+                body="The Surrender Index script is up and running.",
+                from_=credentials['from_phone_number'],
+                to=credentials['to_phone_number'])
         if not should_repeat:
             break
         time.sleep(60 * 60 * 24)
@@ -645,10 +647,11 @@ def send_error_message(e, body="An error occurred"):
     global twilio_client
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-        message = twilio_client.messages.create(
-            body=body + ": " + str(e) + ".",
-            from_=credentials['from_phone_number'],
-            to=credentials['to_phone_number'])
+        if should_text:
+            message = twilio_client.messages.create(
+                body=body + ": " + str(e) + ".",
+                from_=credentials['from_phone_number'],
+                to=credentials['to_phone_number'])
 
 def create_tweet_str(play, drive, drives, game, surrender_index, current_percentile,
                      historical_percentile):
@@ -772,8 +775,8 @@ def handle_cancel(orig_status, full_text):
 
 ### CURRENT GAME FUNCTIONS ###
 
-def time_print(str):
-    print(get_current_time_str() + ": " + str)
+def time_print(message):
+    print(get_current_time_str() + ": " + str(message))
 
 def get_current_time_str():
     return datetime.now().strftime("%b %-d at %-I:%M:%S %p")
@@ -804,7 +807,6 @@ def update_current_year_games():
 def get_active_game_ids():
     global current_year_games
     global completed_game_ids
-    global start_times
 
     now = get_now()
     active_game_ids = set()
@@ -818,7 +820,6 @@ def get_active_game_ids():
         if game_time - timedelta(minutes=15) < now and game_time + timedelta(hours=6) > now:
             # game should start within 15 minutes and not started more than 6 hours ago
             active_game_ids.add(game['id'])
-            start_times[game['id']] = game_time
     return active_game_ids
 
 def clean_games(active_game_ids):
@@ -866,6 +867,7 @@ def main():
     global ninety_api
     global cancel_api
     global historical_surrender_indices
+    global should_text
     global should_tweet
     global sleep_time
     global twilio_client
@@ -876,8 +878,12 @@ def main():
     parser.add_argument('--disableTweeting',
                         action='store_true',
                         dest='disableTweeting')
+    parser.add_argument('--disableTwilio',
+                        action='store_true',
+                        dest='disableTwilio')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
+    should_text = not args.disableTwilio
 
     if should_tweet:
         print("Tweeting Enabled")
