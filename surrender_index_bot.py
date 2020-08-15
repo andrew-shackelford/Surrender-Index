@@ -610,11 +610,18 @@ def play_hash(play, drive, game):
 
 def load_tweeted_plays_dict():
     global tweeted_plays
-    try:
+    tweeted_plays = {}
+    if os.path.exists('tweeted_plays.json'):
+        file_mod_time = os.path.getmtime('tweeted_plays.json')
+    else:
+        file_mod_time = 0.
+    if time.time() - file_mod_time < 60 * 60 * 12:
+        # if file modified within past 12 hours
         with open('tweeted_plays.json', 'r') as f:
             tweeted_plays = json.load(f)
-    except:
-        tweeted_plays = {}
+    else:        
+        with open('tweeted_plays.json', 'w') as f:
+            json.dump(tweeted_plays, f)
 
 
 def update_tweeted_plays(play, drive, game, game_id):
@@ -992,7 +999,6 @@ def main():
     sleep_time = 1
 
     completed_game_ids = set()
-    load_tweeted_plays_dict()
 
     if not os.path.exists("game_data/"):
         os.makedirs("game_data")
@@ -1000,20 +1006,22 @@ def main():
     should_continue = True
     while should_continue:
         try:
-            # update current year games and punters at 3 AM every day
+            # update current year games and punters at 5 AM every day
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
             download_punters()
+            load_tweeted_plays_dict()
+
 
             now = get_now()
-            if now.hour < 3:
-                stop_date = now.replace(hour=3,
+            if now.hour < 5:
+                stop_date = now.replace(hour=5,
                                         minute=0,
                                         second=0,
                                         microsecond=0)
             else:
                 now += timedelta(days=1)
-                stop_date = now.replace(hour=3,
+                stop_date = now.replace(hour=5,
                                         minute=0,
                                         second=0,
                                         microsecond=0)
