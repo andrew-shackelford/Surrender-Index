@@ -21,11 +21,13 @@ import os
 import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
+from selenium.common.exceptions import StaleElementReferenceException
 import sys
 import threading
 import time
 import tweepy
 from twilio.rest import Client
+import traceback
 
 # A dictionary of plays that have already been tweeted.
 tweeted_plays = None
@@ -115,23 +117,23 @@ def get_plays_from_drive(drive):
     all_plays = drive.find_elements_by_tag_name("li")
     good_plays = []
     for play in all_plays:
-        if play.get_attribute("class") == '':
-            try:
-                play_dct = construct_play_from_element(play)
-                if 'yard_line' in play_dct:
-                    good_plays.append(play_dct)
-            except Exception as e:
-                time_print("Exception occurred constructing play")
-                time_print(play.get_attribute("innerHTML"))
-                time_print(drive)
-                time_print(e)
-                send_error_message(
-                    e, "An error occurred when trying to construct a play")
+        if play.get_attribute("class") == '' or play.get_attribute("class") == 'video':
+            play_dct = construct_play_from_element(play)
+            if 'yard_line' in play_dct:
+                good_plays.append(play_dct)
+
     return good_plays
 
 
 def get_all_drives(game):
-    return game.find_elements_by_class_name("drive-list")
+    all_drives = game.find_elements_by_class_name("drive-list")
+    for drive in all_drives:
+        accordion_content = drive.find_element_by_xpath('..').find_element_by_xpath('..')
+        if "in" not in accordion_content.get_attribute("class"):
+            accordion_content.find_element_by_xpath('..').click()
+            time.sleep(0.5)
+    return all_drives
+
 
 
 ### POSSESSION DETERMINATION FUNCTIONS ###
@@ -235,12 +237,18 @@ def get_game_header(game):
 
 def is_final(game):
     element = game.find_element_by_class_name("status-detail")
-    return 'final' in get_inner_html_of_element(element).lower()
+    is_final = 'final' in get_inner_html_of_element(element).lower()
+    if debug:
+        time_print(("is final", is_final))
+    return is_final
 
 
 def is_postseason(game):
     header = get_game_header(game).lower()
-    return 'playoff' in header or 'championship' in header or 'super bowl' in header
+    is_postseason = 'playoff' in header or 'championship' in header or 'super bowl' in header
+    if debug:
+        time_print(("is postseason", is_postseason))
+    return is_postseason
 
 
 ### SCORE FUNCTIONS ###
@@ -264,11 +272,14 @@ def get_away_score(play, drive, drives, game):
 
 
 def get_drive_scores(drives, index, game):
-    if index == 0:
-        drive = drives[0]
-    else:
-        if is_final(game):
+    if is_final(game):
+        if index == 0:
+            drive = drives[0]
+        else:
             drive = drives[index - 1]
+    else:
+        if index == len(drives) - 1:
+            drive = drives[-1]
         else:
             drive = drives[index + 1]
     accordion_header = drive.find_element_by_xpath('../../..')
@@ -278,8 +289,12 @@ def get_drive_scores(drives, index, game):
         'away')  # this is intentional, ESPN is dumb
     away_score_element = away_parent.find_element_by_class_name('team-score')
     home_score_element = home_parent.find_element_by_class_name('team-score')
-    return get_inner_html_of_element(
-        away_score_element), get_inner_html_of_element(home_score_element)
+    away_score, home_score = int(get_inner_html_of_element(
+        away_score_element)), int(get_inner_html_of_element(home_score_element))
+    if debug:
+        time_print(("away score", away_score))
+        time_print(("home score", home_score))
+    return away_score, home_score
 
 
 ### PLAY FUNCTIONS ###
@@ -326,16 +341,14 @@ def get_qtr_num(play):
 
 
 def is_in_opposing_territory(play, drive, game):
-    return get_field_side(play) != get_possessing_team(play, drive, game)
+    is_in_opposing_territory = get_field_side(play) != get_possessing_team(play, drive, game)
+    if debug:
+        time_print(("is in opposing territory", is_in_opposing_territory))
+    return is_in_opposing_territory
 
 
 def get_dist_num(play):
     return int(play['dist'])
-
-
-def get_unique_str_from_play(play):
-    return str(play['period']) + str(play['homeScore']) + str(
-        play(['away_score'])) + play['clock']['displayValue'] + play['text']
 
 
 ### CALCULATION HELPER FUNCTIONS ###
@@ -354,16 +367,22 @@ def calc_seconds_since_halftime(play, game):
     else:
         seconds_elapsed_in_qtr = (15 * 60) - calc_seconds_from_time_str(
             get_time_str(play))
-    return max(seconds_elapsed_in_qtr + (15 * 60) * (get_qtr_num(play) - 3), 0)
+    seconds_since_halftime = max(seconds_elapsed_in_qtr + (15 * 60) * (get_qtr_num(play) - 3), 0)
+    if debug:
+        time_print(("seconds since halftime", seconds_since_halftime))
+    return seconds_since_halftime
 
 
 def calc_score_diff(play, drive, drives, game):
     drive_index = drives.index(drive)
     away, home = get_drive_scores(drives, drive_index, game)
-    if get_possessing_team(play, drive, game) == get_home_team(game):
-        return int(home) - int(away)
+    if get_possessing_team(play, drive, game) == get_home_team(game):\
+        score_diff = int(home) - int(away)
     else:
-        return int(away) - int(home)
+        score_diff = int(away) - int(home)
+    if debug:
+        time_print(("score diff", score_diff))
+    return score_diff
 
 
 ### SURRENDER INDEX FUNCTIONS ###
@@ -418,11 +437,19 @@ def calc_clock_multiplier(play, drive, drives, game):
 
 
 def calc_surrender_index(play, drive, drives, game):
-    return calc_field_pos_score(
-        play, drive,
-        game) * calc_yds_to_go_multiplier(play) * calc_score_multiplier(
-            play, drive, drives, game) * calc_clock_multiplier(
-                play, drive, drives, game)
+    field_pos_score = calc_field_pos_score(play, drive, game)
+    yds_to_go_mult = calc_yds_to_go_multiplier(play)
+    score_mult = calc_score_multiplier(play, drive, drives, game)
+    clock_mult = calc_clock_multiplier(play, drive, drives, game)
+
+    if debug:
+        time_print(play)
+        time_print("")
+        time_print(("field pos score", field_pos_score))
+        time_print(("yds to go mult", yds_to_go_mult))
+        time_print(("score mult", score_mult))
+        time_print(("clock mult", clock_mult))
+    return field_pos_score * yds_to_go_mult * score_mult * clock_mult
 
 
 ### PUNTER FUNCTIONS ###
@@ -911,7 +938,7 @@ def get_active_game_ids():
 
     for game in current_year_games:
         if game['id'] in completed_game_ids:
-            # ignore any games that are marked completed (which is done by checking if espn says final)
+            # ignore any games that are marked completed (which is done by checking if ESPN says final)
             continue
         game_time = parser.parse(
             game['date']).replace(tzinfo=timezone.utc).astimezone(tz=None)
@@ -924,10 +951,17 @@ def get_active_game_ids():
 
 def clean_games(active_game_ids):
     global games
+    global disable_final_check
+    global completed_game_ids
     for game_id in list(games.keys()):
         if game_id not in active_game_ids:
             games[game_id].quit()
             del games[game_id]
+        if not disable_final_check:
+            if is_final(games[game_id]):
+                completed_game_ids.add(game_id)
+                games[game_id].quit()
+                del games[game_id]
 
 
 def download_data_for_active_games():
@@ -936,7 +970,7 @@ def download_data_for_active_games():
     if len(active_game_ids) == 0:
         time_print("No games active. Sleeping for 15 minutes...")
         time.sleep(14 * 60)  # We sleep for another minute in the live callback
-    clean_games(active_game_ids)
+    game_added = False
     for game_id in active_game_ids:
         if game_id not in games:
             game = get_game_driver()
@@ -944,6 +978,11 @@ def download_data_for_active_games():
             game_link = base_link + game_id
             game.get(game_link)
             games[game_id] = game
+            game_added = True
+    if game_added:
+        time_print("Sleeping 10 seconds for game to load")
+        time.sleep(10)
+    clean_games(active_game_ids)
     live_callback()
 
 
@@ -954,13 +993,21 @@ def live_callback():
     global games
     start_time = time.time()
     for game_id, game in games.items():
-        time_print('Getting data for game ID ' + game_id)
-        drives = get_all_drives(game)
-        for index, drive in enumerate(drives):
-            drive_start_time = time.time()
-            for play in get_plays_from_drive(drive):
-                if is_punt(play):
-                    tweet_play(play, drive, drives, game, game_id)
+        try:
+            time_print('Getting data for game ID ' + game_id)
+            drives = get_all_drives(game)
+            for index, drive in enumerate(drives):
+                num_printed = 0
+                for play in get_plays_from_drive(drive):
+                    if debug and index == 0 and num_printed < 3:
+                        time_print(play['text'])
+                        num_printed += 1
+                    if is_punt(play):
+                        tweet_play(play, drive, drives, game, game_id)
+        except StaleElementReferenceException:
+            time_print("stale element, sleeping for 1 second.")
+            time.sleep(1)
+            return
     while (time.time() < start_time + 60):
         time.sleep(1)
 
@@ -972,6 +1019,8 @@ def main():
     global historical_surrender_indices
     global should_text
     global should_tweet
+    global debug
+    global disable_final_check
     global sleep_time
     global twilio_client
     global completed_game_ids
@@ -984,9 +1033,17 @@ def main():
     parser.add_argument('--disableTwilio',
                         action='store_true',
                         dest='disableTwilio')
+    parser.add_argument('--debug',
+                        action='store_true',
+                        dest='debug')
+    parser.add_argument('--disableFinalCheck',
+                        action='store_true',
+                        dest='disableFinalCheck')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
     should_text = not args.disableTwilio
+    debug = args.debug
+    disable_final_check = args.disableFinalCheck
 
     if should_tweet:
         print("Tweeting Enabled")
@@ -999,9 +1056,6 @@ def main():
     sleep_time = 1
 
     completed_game_ids = set()
-
-    if not os.path.exists("game_data/"):
-        os.makedirs("game_data")
 
     should_continue = True
     while should_continue:
@@ -1035,6 +1089,7 @@ def main():
         except Exception as e:
             # When an exception occurs: log it, send a message, and sleep for an
             # exponential backoff time
+            traceback.print_exc()
             time_print("Error occurred:")
             time_print(e)
             time_print("Sleeping for " + str(sleep_time) + " minutes")
