@@ -71,12 +71,12 @@ def get_twitter_driver(headless=False):
     driver.implicitly_wait(10)
     driver.get('https://twitter.com/login')
 
-    username_field = driver.find_element_by_class_name("js-username-field")
-    password_field = driver.find_element_by_class_name("js-password-field")
+    username_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
+    password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
     username_field.send_keys(username)
     password_field.send_keys(password)
 
-    driver.find_element_by_class_name("EdgeButtom--medium").click()
+    driver.find_element_by_xpath("//div[@data-testid='LoginForm_Login_Button']").click()
     return driver
 
 
