@@ -854,14 +854,13 @@ def check_reply(link):
     poll_content = poll_title.find_element_by_xpath("./..")
     poll_result = poll_content.find_elements_by_tag_name("span")
     poll_values = [poll_result[2], poll_result[5]]
-    poll_floats = map(lambda x: float(x.get_attribute("innerHTML").strip('%')),
-                      poll_values)
+    poll_floats = list(map(lambda x: float(x.get_attribute("innerHTML").strip('%')),
+                      poll_values))
 
+    driver.close()
     if len(poll_floats) != 2:
-        driver.close()
         return None
     else:
-        driver.close()
         return poll_floats[0] >= 66.67
 
 
