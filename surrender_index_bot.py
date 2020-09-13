@@ -775,7 +775,7 @@ def create_tweet_str(play, drive, drives, game, surrender_index,
             game, get_possessing_team(play, drive, game))
     yrdln_str = ' from the ' + territory_str + ' on '
     down_str = play['down'] + ' & ' + play['dist']
-    clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in '
+    clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in the '
     qtr_str = play['qtr'] + ' while ' + get_score_str(play, drive, drives,
                                                       game) + '.'
 
