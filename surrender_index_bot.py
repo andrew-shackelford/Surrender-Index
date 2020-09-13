@@ -548,12 +548,10 @@ def get_pretty_time_str(time_str):
 
 
 def get_qtr_str(qtr):
-    if qtr < 5:
-        return 'the ' + get_num_str(qtr)
-    elif qtr == 5:
-        return 'OT'
+    if 'OT' in qtr:
+        return qtr
     else:
-        return str(qtr - 4) + ' OT'
+        return 'the ' + get_num_str(int(qtr[0]))
 
 
 def get_ordinal_suffix(num):
@@ -775,8 +773,8 @@ def create_tweet_str(play, drive, drives, game, surrender_index,
             game, get_possessing_team(play, drive, game))
     yrdln_str = ' from the ' + territory_str + ' on '
     down_str = play['down'] + ' & ' + play['dist']
-    clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in the '
-    qtr_str = play['qtr'] + ' while ' + get_score_str(play, drive, drives,
+    clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in '
+    qtr_str = get_qtr_str(play['qtr']) + ' while ' + get_score_str(play, drive, drives,
                                                       game) + '.'
 
     play_str = decided_str + yrdln_str + down_str + clock_str + qtr_str
