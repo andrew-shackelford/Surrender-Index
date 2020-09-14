@@ -61,7 +61,7 @@ def get_game_driver(headless=True):
         raise Exception('No chromedriver found')
 
 
-def get_twitter_driver(headless=True):
+def get_twitter_driver(headless=False):
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
         email = credentials['cancel_email']
