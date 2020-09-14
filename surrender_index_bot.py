@@ -550,7 +550,7 @@ def download_punters():
 
 
 def get_pretty_time_str(time_str):
-    if time_str[0] == '0':
+    if time_str[0] == '0' and time_str[1] != ':':
         return time_str[1:]
     else:
         return time_str
