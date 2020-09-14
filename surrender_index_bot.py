@@ -47,7 +47,7 @@ should_tweet = True
 ### SELENIUM FUNCTIONS ###
 
 
-def get_game_driver(headless=False):
+def get_game_driver(headless=True):
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("headless")
@@ -61,7 +61,7 @@ def get_game_driver(headless=False):
         raise Exception('No chromedriver found')
 
 
-def get_twitter_driver(headless=False):
+def get_twitter_driver(headless=True):
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
         email = credentials['cancel_email']
