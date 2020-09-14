@@ -64,19 +64,28 @@ def get_game_driver(headless=False):
 def get_twitter_driver(headless=False):
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-        username = credentials['cancel_email']
+        email = credentials['cancel_email']
+        username = credentials['cancel_username']
         password = credentials['cancel_password']
 
     driver = get_game_driver(headless=headless)
     driver.implicitly_wait(10)
     driver.get('https://twitter.com/login')
 
-    username_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
+    email_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
     password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
-    username_field.send_keys(username)
+    email_field.send_keys(email)
     password_field.send_keys(password)
-
     driver.find_element_by_xpath("//div[@data-testid='LoginForm_Login_Button']").click()
+    
+    time.sleep(1)
+    if 'email_disabled=true' in driver.current_url:
+        username_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
+        password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
+        username_field.send_keys(username)
+        password_field.send_keys(password)
+        driver.find_element_by_xpath("//div[@data-testid='LoginForm_Login_Button']").click()
+    
     return driver
 
 
