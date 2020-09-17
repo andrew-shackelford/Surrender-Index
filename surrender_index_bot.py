@@ -61,7 +61,7 @@ def get_game_driver(headless=True):
         raise Exception('No chromedriver found')
 
 
-def get_twitter_driver(headless=False):
+def get_twitter_driver(link, headless=False):
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
         email = credentials['cancel_email']
@@ -70,8 +70,15 @@ def get_twitter_driver(headless=False):
 
     driver = get_game_driver(headless=headless)
     driver.implicitly_wait(10)
-    driver.get('https://twitter.com/login')
-
+    driver.get(link)
+    
+    driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
+    
+    time.sleep(1)
+    login_button = driver.find_element_by_xpath("//a[@data-testid='login']")
+    time.sleep(1)
+    driver.execute_script("arguments[0].click();", login_button)
+    
     email_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
     password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
     email_field.send_keys(email)
@@ -79,6 +86,7 @@ def get_twitter_driver(headless=False):
     driver.find_element_by_xpath("//div[@data-testid='LoginForm_Login_Button']").click()
     
     time.sleep(1)
+        
     if 'email_disabled=true' in driver.current_url:
         username_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
         password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
@@ -830,8 +838,7 @@ def tweet_play(play, drive, drives, game, game_id):
 
 
 def post_reply_poll(link):
-    driver = get_twitter_driver()
-    driver.get(link)
+    driver = get_twitter_driver(link)
 
     driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
     driver.find_element_by_xpath("//div[@aria-label='Add poll']").click()
@@ -854,8 +861,10 @@ def post_reply_poll(link):
 
 def check_reply(link):
     time.sleep(60 * 60)  # Wait one hour to check reply
-    driver = get_twitter_driver()
+    driver = get_game_driver(headless=False)
     driver.get(link)
+
+    time.sleep(3)
 
     poll_title = driver.find_element_by_xpath("//*[contains(text(), 'votes')]")
     poll_content = poll_title.find_element_by_xpath("./..")
@@ -865,6 +874,7 @@ def check_reply(link):
                       poll_values))
 
     driver.close()
+    time_print(("checking poll results: ", poll_floats))
     if len(poll_floats) != 2:
         return None
     else:
@@ -892,6 +902,7 @@ def handle_cancel(orig_status, full_text):
         if check_reply(orig_link):
             cancel_punt(orig_status, full_text)
     except Exception as e:
+        traceback.print_exc()
         time_print("An error occurred when trying to handle canceling a tweet")
         time_print(orig_status)
         time_print(e)
