@@ -642,6 +642,16 @@ def has_been_tweeted(play, drive, game, game_id):
             return True
     return False
 
+def has_been_seen(play, drive, game, game_id):
+    global seen_plays
+    game_plays = seen_plays.get(game_id, [])
+    for old_play in list(game_plays):
+        if old_play == deep_play_hash(play, drive, game):
+            return True
+    game_plays.append(deep_play_hash(play, drive, game))
+    seen_plays[game_id] = game_plays
+    return False
+
 
 def play_hash(play, drive, game):
     possessing_team = get_possessing_team(play, drive, game)
@@ -649,6 +659,14 @@ def play_hash(play, drive, game):
     time = play['time']
     return possessing_team + '_' + qtr + '_' + time
 
+def deep_play_hash(play, drive, game):
+    possessing_team = get_possessing_team(play, drive, game)
+    qtr = play['qtr']
+    time = play['time']
+    down = play['down']
+    dist = play['dist']
+    yard_line = play['yard_line']
+    return possessing_team + '_' + qtr + '_' + time + '_' + down + '_' + dist + '_' + yard_line
 
 def load_tweeted_plays_dict():
     global tweeted_plays
@@ -812,7 +830,7 @@ def tweet_play(play, drive, drives, game, game_id):
     global cancel_api
     global should_tweet
 
-    if not has_been_tweeted(play, drive, game, game_id):
+    if not has_been_tweeted(play, drive, game, game_id) and has_been_seen(play, drive, game, game_id):
         surrender_index = calc_surrender_index(play, drive, drives, game)
         current_percentile, historical_percentile = calculate_percentiles(
             surrender_index)
@@ -1021,6 +1039,7 @@ def live_callback():
                         num_printed += 1
                     if is_punt(play):
                         tweet_play(play, drive, drives, game, game_id)
+            time_print("Done getting data for game ID " + game_id)
         except StaleElementReferenceException:
             time_print("stale element, sleeping for 1 second.")
             time.sleep(1)
@@ -1039,6 +1058,7 @@ def main():
     global debug
     global disable_final_check
     global sleep_time
+    global seen_plays
     global twilio_client
     global completed_game_ids
 
@@ -1082,6 +1102,7 @@ def main():
             update_current_year_games()
             download_punters()
             load_tweeted_plays_dict()
+            seen_plays = {}
 
 
             now = get_now()
