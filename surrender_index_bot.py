@@ -12,6 +12,7 @@ Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
 import argparse
+import chromedriver_autoinstaller
 from datetime import datetime, timedelta, timezone
 from dateutil import parser, tz
 import espn_scraper as espn
@@ -51,14 +52,7 @@ def get_game_driver(headless=True):
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("headless")
-    if sys.platform.startswith('darwin'):
-        return webdriver.Chrome(executable_path='./chromedriver_mac',
-                                options=options)
-    elif sys.platform.startswith('linux'):
-        return webdriver.Chrome(executable_path='./chromedriver_linux',
-                                options=options)
-    else:
-        raise Exception('No chromedriver found')
+    return webdriver.Chrome(options=options)
 
 
 def get_twitter_driver(link, headless=False):
@@ -1107,6 +1101,8 @@ def main():
     should_continue = True
     while should_continue:
         try:
+            chromedriver_autoinstaller.install()
+
             # update current year games and punters at 5 AM every day
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
