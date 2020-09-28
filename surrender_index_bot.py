@@ -652,6 +652,13 @@ def has_been_seen(play, drive, game, game_id):
     seen_plays[game_id] = game_plays
     return False
 
+def has_been_final(game_id):
+    global final_games
+    if game_id in final_games:
+        return True
+    final_games.add(game_id)
+    return False
+
 
 def play_hash(play, drive, game):
     possessing_team = get_possessing_team(play, drive, game)
@@ -878,7 +885,7 @@ def post_reply_poll(link):
 
 
 def check_reply(link):
-    time.sleep(60 * 60)  # Wait one hour to check reply
+    time.sleep(61 * 60)  # Wait one hour and one minute to check reply
     driver = get_game_driver(headless=False)
     driver.get(link)
 
@@ -994,9 +1001,10 @@ def clean_games(active_game_ids):
             del games[game_id]
         if not disable_final_check:
             if is_final(games[game_id]):
-                completed_game_ids.add(game_id)
-                games[game_id].quit()
-                del games[game_id]
+                if has_been_final(game_id):
+                    completed_game_ids.add(game_id)
+                    games[game_id].quit()
+                    del games[game_id]
 
 
 def download_data_for_active_games():
@@ -1055,6 +1063,7 @@ def main():
     global historical_surrender_indices
     global should_text
     global should_tweet
+    global final_games
     global debug
     global disable_final_check
     global sleep_time
@@ -1093,6 +1102,7 @@ def main():
     sleep_time = 1
 
     completed_game_ids = set()
+    final_games = set()
 
     should_continue = True
     while should_continue:
