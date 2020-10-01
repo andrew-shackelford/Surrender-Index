@@ -618,6 +618,12 @@ def get_score_str(play, drive, drives, game):
                                 get_home_score(play, drive, drives, game))
 
 
+### DELAY OF GAME FUNCTIONS ###
+
+def is_delay_of_game(play, prev_play):
+    return 'delay of game' in prev_play['text'].lower() and get_dist_num(play) - get_dist_num(prev_play) > 0
+
+
 ### HISTORY FUNCTIONS ###
 
 
@@ -715,7 +721,7 @@ def write_current_surrender_indices(surrender_indices):
         np.save(f, surrender_indices)
 
 
-def calculate_percentiles(surrender_index):
+def calculate_percentiles(surrender_index, should_update_file=True):
     global historical_surrender_indices
 
     current_surrender_indices = load_current_surrender_indices()
@@ -729,9 +735,10 @@ def calculate_percentiles(surrender_index):
                                                     surrender_index,
                                                     kind='strict')
 
-    current_surrender_indices = np.append(current_surrender_indices,
-                                          surrender_index)
-    write_current_surrender_indices(current_surrender_indices)
+    if should_update_file:
+        current_surrender_indices = np.append(current_surrender_indices,
+                                              surrender_index)
+        write_current_surrender_indices(current_surrender_indices)
 
     return current_percentile, historical_percentile
 
@@ -796,19 +803,41 @@ def send_error_message(e, body="An error occurred"):
                 from_=credentials['from_phone_number'],
                 to=credentials['to_phone_number'])
 
+def create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile):
+    if get_yrdln_int(play) == 50:
+        new_territory_str = '50'
+    else:
+        new_territory_str = play['yard_line']
+    if get_yrdln_int(prev_play) == 50:
+        old_territory_str = '50'
+    else:
+        old_territory_str = prev_play['yard_line']
+    penalty_str = "*" + get_possessing_team(play, drive, game) + " committed a (likely intentional) delay of game penalty, "
+    old_yrdln_str = "moving the play from " + prev_play['down'] + ' & ' + prev_play['dist'] + " at the " + prev_play['yard_line']
+    new_yrdln_str = " to " + play['down'] + ' & ' + play['dist'] + " at the " + play['yard_line'] + ".\n\n"
+    index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + str(round(unadjusted_surrender_index, 2)) + ", "
+    percentile_str = "ranking at the " + get_num_str(unadjusted_current_percentile) + " percentile of the 2020 season."
+
+    return penalty_str + old_yrdln_str + new_yrdln_str + index_str + percentile_str
+
 
 def create_tweet_str(play, drive, drives, game, surrender_index,
-                     current_percentile, historical_percentile):
+                     current_percentile, historical_percentile, delay_of_game=False):
     if get_yrdln_int(play) == 50:
         territory_str = '50'
     else:
         territory_str = play['yard_line']
 
+    if delay_of_game:
+        asterisk = "*"
+    else:
+        asterisk = ""
+
     decided_str = get_possessing_team(
         play, drive, game) + ' decided to punt to ' + return_other_team(
             game, get_possessing_team(play, drive, game))
-    yrdln_str = ' from the ' + territory_str + ' on '
-    down_str = play['down'] + ' & ' + play['dist']
+    yrdln_str = ' from the ' + territory_str + asterisk + ' on '
+    down_str = play['down'] + ' & ' + play['dist'] + asterisk
     clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in '
     qtr_str = get_qtr_str(play['qtr']) + ' while ' + get_score_str(play, drive, drives,
                                                       game) + '.'
@@ -825,29 +854,68 @@ def create_tweet_str(play, drive, drives, game, surrender_index,
     return play_str + '\n\n' + surrender_str
 
 
-def tweet_play(play, drive, drives, game, game_id):
+def tweet_play(play, prev_play, drive, drives, game, game_id):
     global api
     global ninety_api
     global cancel_api
     global should_tweet
 
     if not has_been_tweeted(play, drive, game, game_id) and has_been_seen(play, drive, game, game_id):
-        surrender_index = calc_surrender_index(play, drive, drives, game)
-        current_percentile, historical_percentile = calculate_percentiles(
-            surrender_index)
-        tweet_str = create_tweet_str(play, drive, drives, game,
+        delay_of_game = is_delay_of_game(play, prev_play)
+
+        if delay_of_game:
+            updated_play = play.copy()
+            updated_play['dist'] = prev_play['dist']
+            updated_play['yard_line'] = prev_play['yard_line']
+            surrender_index = calc_surrender_index(updated_play, drive, drives, game)
+            current_percentile, historical_percentile = calculate_percentiles(
+                surrender_index)
+            unadjusted_surrender_index = calc_surrender_index(play, drive, drives, game)
+            unadjusted_current_percentile, unadjusted_historical_percentile = calculate_percentiles(unadjusted_surrender_index, should_update_file=False)
+            tweet_str = create_tweet_str(updated_play, drive, drives, game,
                                      surrender_index, current_percentile,
-                                     historical_percentile)
+                                     historical_percentile, delay_of_game)
+        else:
+            surrender_index = calc_surrender_index(play, drive, drives, game)
+            current_percentile, historical_percentile = calculate_percentiles(
+                surrender_index)
+            tweet_str = create_tweet_str(play, drive, drives, game,
+                                     surrender_index, current_percentile,
+                                     historical_percentile, delay_of_game)
 
         time_print(tweet_str)
+
+        if delay_of_game:
+            try:
+                delay_of_game_str = create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile)
+                time_print(delay_of_game_str)
+            except Exception as e:
+                time_print(e)
+                traceback.print_exc()
+                time_print("delay of game str crafting error")
+
         if should_tweet:
-            api.update_status(tweet_str)
+            status = api.update_status(tweet_str)
+            if delay_of_game:
+                try:
+                    api.update_status(delay_of_game_str, in_reply_to_status_id=status.id_str)
+                except Exception as e:
+                    time_print(e)
+                    traceback.print_exc()
+                    time_print("delay of game main account tweet error")
 
         # Post the status to the 90th percentile account.
         if current_percentile >= 90. and should_tweet:
-            orig_status = ninety_api.update_status(tweet_str)
+            ninety_status = ninety_api.update_status(tweet_str)
+            if delay_of_game:
+                try:
+                    ninety_api.update_status(delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
+                except Exception as e:
+                    time_print(e)
+                    traceback.print_exc()
+                    time_print("")
             thread = threading.Thread(target=handle_cancel,
-                                      args=(orig_status._json, tweet_str))
+                                      args=(ninety_status._json, tweet_str))
             thread.start()
 
         update_tweeted_plays(play, drive, game, game_id)
@@ -1035,12 +1103,19 @@ def live_callback():
             drives = get_all_drives(game)
             for index, drive in enumerate(drives):
                 num_printed = 0
-                for play in get_plays_from_drive(drive):
+                drive_plays = get_plays_from_drive(drive)
+                for play_index, play in enumerate(drive_plays):
                     if debug and index == 0 and num_printed < 3:
                         time_print(play['text'])
                         num_printed += 1
+
+                    if is_final(game):
+                        prev_play = drive_plays[play_index-1]
+                    else:
+                        prev_play = drive_plays[play_index+1]
+
                     if is_punt(play):
-                        tweet_play(play, drive, drives, game, game_id)
+                        tweet_play(play, prev_play, drive, drives, game, game_id)
             time_print("Done getting data for game ID " + game_id)
         except StaleElementReferenceException:
             time_print("stale element, sleeping for 1 second.")
