@@ -1110,9 +1110,15 @@ def live_callback():
                         num_printed += 1
 
                     if is_final(game):
-                        prev_play = drive_plays[play_index-1]
+                        if play_index > 0:
+                            prev_play = drive_plays[play_index-1]
+                        else:
+                            prev_play = play
                     else:
-                        prev_play = drive_plays[play_index+1]
+                        if play_index + 1 < len(drive_plays):
+                            prev_play = drive_plays[play_index+1]
+                        else:
+                            prev_play = play
 
                     if is_punt(play):
                         tweet_play(play, prev_play, drive, drives, game, game_id)
