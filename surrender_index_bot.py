@@ -65,29 +65,35 @@ def get_twitter_driver(link, headless=False):
     driver = get_game_driver(headless=headless)
     driver.implicitly_wait(10)
     driver.get(link)
-    
+
     driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
-    
+
     time.sleep(1)
     login_button = driver.find_element_by_xpath("//a[@data-testid='login']")
     time.sleep(1)
     driver.execute_script("arguments[0].click();", login_button)
-    
-    email_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
-    password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
+
+    email_field = driver.find_element_by_xpath(
+        "//input[@name='session[username_or_email]']")
+    password_field = driver.find_element_by_xpath(
+        "//input[@name='session[password]']")
     email_field.send_keys(email)
     password_field.send_keys(password)
-    driver.find_element_by_xpath("//div[@data-testid='LoginForm_Login_Button']").click()
-    
+    driver.find_element_by_xpath(
+        "//div[@data-testid='LoginForm_Login_Button']").click()
+
     time.sleep(1)
-        
+
     if 'email_disabled=true' in driver.current_url:
-        username_field = driver.find_element_by_xpath("//input[@name='session[username_or_email]']")
-        password_field = driver.find_element_by_xpath("//input[@name='session[password]']")
+        username_field = driver.find_element_by_xpath(
+            "//input[@name='session[username_or_email]']")
+        password_field = driver.find_element_by_xpath(
+            "//input[@name='session[password]']")
         username_field.send_keys(username)
         password_field.send_keys(password)
-        driver.find_element_by_xpath("//div[@data-testid='LoginForm_Login_Button']").click()
-    
+        driver.find_element_by_xpath(
+            "//div[@data-testid='LoginForm_Login_Button']").click()
+
     return driver
 
 
@@ -132,7 +138,8 @@ def get_plays_from_drive(drive, game):
     else:
         relevant_plays = all_plays[:3]
     for play in relevant_plays:
-        if play.get_attribute("class") == '' or play.get_attribute("class") == 'video':
+        if play.get_attribute("class") == '' or play.get_attribute(
+                "class") == 'video':
             play_dct = construct_play_from_element(play)
             if 'yard_line' in play_dct:
                 good_plays.append(play_dct)
@@ -142,12 +149,12 @@ def get_plays_from_drive(drive, game):
 def get_all_drives(game):
     all_drives = game.find_elements_by_class_name("drive-list")
     for drive in all_drives:
-        accordion_content = drive.find_element_by_xpath('..').find_element_by_xpath('..')
+        accordion_content = drive.find_element_by_xpath(
+            '..').find_element_by_xpath('..')
         if "in" not in accordion_content.get_attribute("class"):
             accordion_content.find_element_by_xpath('..').click()
             time.sleep(0.5)
     return all_drives
-
 
 
 ### POSSESSION DETERMINATION FUNCTIONS ###
@@ -303,8 +310,9 @@ def get_drive_scores(drives, index, game):
         'away')  # this is intentional, ESPN is dumb
     away_score_element = away_parent.find_element_by_class_name('team-score')
     home_score_element = home_parent.find_element_by_class_name('team-score')
-    away_score, home_score = int(get_inner_html_of_element(
-        away_score_element)), int(get_inner_html_of_element(home_score_element))
+    away_score, home_score = int(
+        get_inner_html_of_element(away_score_element)), int(
+            get_inner_html_of_element(home_score_element))
     if debug:
         time_print(("away score", away_score))
         time_print(("home score", home_score))
@@ -355,7 +363,8 @@ def get_qtr_num(play):
 
 
 def is_in_opposing_territory(play, drive, game):
-    is_in_opposing_territory = get_field_side(play) != get_possessing_team(play, drive, game)
+    is_in_opposing_territory = get_field_side(play) != get_possessing_team(
+        play, drive, game)
     if debug:
         time_print(("is in opposing territory", is_in_opposing_territory))
     return is_in_opposing_territory
@@ -381,7 +390,8 @@ def calc_seconds_since_halftime(play, game):
     else:
         seconds_elapsed_in_qtr = (15 * 60) - calc_seconds_from_time_str(
             get_time_str(play))
-    seconds_since_halftime = max(seconds_elapsed_in_qtr + (15 * 60) * (get_qtr_num(play) - 3), 0)
+    seconds_since_halftime = max(
+        seconds_elapsed_in_qtr + (15 * 60) * (get_qtr_num(play) - 3), 0)
     if debug:
         time_print(("seconds since halftime", seconds_since_halftime))
     return seconds_since_halftime
@@ -390,8 +400,8 @@ def calc_seconds_since_halftime(play, game):
 def calc_score_diff(play, drive, drives, game):
     drive_index = drives.index(drive)
     away, home = get_drive_scores(drives, drive_index, game)
-    if get_possessing_team(play, drive, game) == get_home_team(game):\
-        score_diff = int(home) - int(away)
+    if get_possessing_team(play, drive, game) == get_home_team(game):        \
+                score_diff = int(home) - int(away)
     else:
         score_diff = int(away) - int(home)
     if debug:
@@ -623,8 +633,10 @@ def get_score_str(play, drive, drives, game):
 
 ### DELAY OF GAME FUNCTIONS ###
 
+
 def is_delay_of_game(play, prev_play):
-    return 'delay of game' in prev_play['text'].lower() and get_dist_num(play) - get_dist_num(prev_play) > 0
+    return 'delay of game' in prev_play['text'].lower(
+    ) and get_dist_num(play) - get_dist_num(prev_play) > 0
 
 
 ### HISTORY FUNCTIONS ###
@@ -645,6 +657,7 @@ def has_been_tweeted(play, drive, game, game_id):
             return True
     return False
 
+
 def has_been_seen(play, drive, game, game_id):
     global seen_plays
     game_plays = seen_plays.get(game_id, [])
@@ -654,6 +667,7 @@ def has_been_seen(play, drive, game, game_id):
     game_plays.append(deep_play_hash(play, drive, game))
     seen_plays[game_id] = game_plays
     return False
+
 
 def has_been_final(game_id):
     global final_games
@@ -669,6 +683,7 @@ def play_hash(play, drive, game):
     time = play['time']
     return possessing_team + '_' + qtr + '_' + time
 
+
 def deep_play_hash(play, drive, game):
     possessing_team = get_possessing_team(play, drive, game)
     qtr = play['qtr']
@@ -677,6 +692,7 @@ def deep_play_hash(play, drive, game):
     dist = play['dist']
     yard_line = play['yard_line']
     return possessing_team + '_' + qtr + '_' + time + '_' + down + '_' + dist + '_' + yard_line
+
 
 def load_tweeted_plays_dict():
     global tweeted_plays
@@ -689,7 +705,7 @@ def load_tweeted_plays_dict():
         # if file modified within past 12 hours
         with open('tweeted_plays.json', 'r') as f:
             tweeted_plays = json.load(f)
-    else:        
+    else:
         with open('tweeted_plays.json', 'w') as f:
             json.dump(tweeted_plays, f)
 
@@ -806,7 +822,11 @@ def send_error_message(e, body="An error occurred"):
                 from_=credentials['from_phone_number'],
                 to=credentials['to_phone_number'])
 
-def create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile):
+
+def create_delay_of_game_str(play, drive, game, prev_play,
+                             unadjusted_surrender_index,
+                             unadjusted_current_percentile,
+                             unadjusted_historical_percentile):
     if get_yrdln_int(play) == 50:
         new_territory_str = '50'
     else:
@@ -815,17 +835,30 @@ def create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_
         old_territory_str = '50'
     else:
         old_territory_str = prev_play['yard_line']
-    penalty_str = "*" + get_possessing_team(play, drive, game) + " committed a (likely intentional) delay of game penalty, "
-    old_yrdln_str = "moving the play from " + prev_play['down'] + ' & ' + prev_play['dist'] + " at the " + prev_play['yard_line']
-    new_yrdln_str = " to " + play['down'] + ' & ' + play['dist'] + " at the " + play['yard_line'] + ".\n\n"
-    index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + str(round(unadjusted_surrender_index, 2)) + ", "
-    percentile_str = "ranking at the " + get_num_str(unadjusted_current_percentile) + " percentile of the 2020 season."
+    penalty_str = "*" + get_possessing_team(
+        play, drive,
+        game) + " committed a (likely intentional) delay of game penalty, "
+    old_yrdln_str = "moving the play from " + prev_play[
+        'down'] + ' & ' + prev_play['dist'] + " at the " + prev_play[
+            'yard_line']
+    new_yrdln_str = " to " + play['down'] + ' & ' + play[
+        'dist'] + " at the " + play['yard_line'] + ".\n\n"
+    index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + str(
+        round(unadjusted_surrender_index, 2)) + ", "
+    percentile_str = "ranking at the " + get_num_str(
+        unadjusted_current_percentile) + " percentile of the 2020 season."
 
     return penalty_str + old_yrdln_str + new_yrdln_str + index_str + percentile_str
 
 
-def create_tweet_str(play, drive, drives, game, surrender_index,
-                     current_percentile, historical_percentile, delay_of_game=False):
+def create_tweet_str(play,
+                     drive,
+                     drives,
+                     game,
+                     surrender_index,
+                     current_percentile,
+                     historical_percentile,
+                     delay_of_game=False):
     if get_yrdln_int(play) == 50:
         territory_str = '50'
     else:
@@ -842,8 +875,8 @@ def create_tweet_str(play, drive, drives, game, surrender_index,
     yrdln_str = ' from the ' + territory_str + asterisk + ' on '
     down_str = play['down'] + ' & ' + play['dist'] + asterisk
     clock_str = ' with ' + get_pretty_time_str(play['time']) + ' remaining in '
-    qtr_str = get_qtr_str(play['qtr']) + ' while ' + get_score_str(play, drive, drives,
-                                                      game) + '.'
+    qtr_str = get_qtr_str(play['qtr']) + ' while ' + get_score_str(
+        play, drive, drives, game) + '.'
 
     play_str = decided_str + yrdln_str + down_str + clock_str + qtr_str
 
@@ -869,38 +902,45 @@ def tweet_play(play, prev_play, drive, drives, game, game_id):
         updated_play = play.copy()
         updated_play['dist'] = prev_play['dist']
         updated_play['yard_line'] = prev_play['yard_line']
-        surrender_index = calc_surrender_index(updated_play, drive, drives, game)
+        surrender_index = calc_surrender_index(updated_play, drive, drives,
+                                               game)
         current_percentile, historical_percentile = calculate_percentiles(
             surrender_index)
-        unadjusted_surrender_index = calc_surrender_index(play, drive, drives, game)
-        unadjusted_current_percentile, unadjusted_historical_percentile = calculate_percentiles(unadjusted_surrender_index, should_update_file=False)
+        unadjusted_surrender_index = calc_surrender_index(
+            play, drive, drives, game)
+        unadjusted_current_percentile, unadjusted_historical_percentile = calculate_percentiles(
+            unadjusted_surrender_index, should_update_file=False)
         tweet_str = create_tweet_str(updated_play, drive, drives, game,
-                                 surrender_index, current_percentile,
-                                 historical_percentile, delay_of_game)
+                                     surrender_index, current_percentile,
+                                     historical_percentile, delay_of_game)
     else:
         surrender_index = calc_surrender_index(play, drive, drives, game)
         current_percentile, historical_percentile = calculate_percentiles(
             surrender_index)
         tweet_str = create_tweet_str(play, drive, drives, game,
-                                 surrender_index, current_percentile,
-                                 historical_percentile, delay_of_game)
+                                     surrender_index, current_percentile,
+                                     historical_percentile, delay_of_game)
 
     time_print(tweet_str)
 
     if delay_of_game:
-        delay_of_game_str = create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile)
+        delay_of_game_str = create_delay_of_game_str(
+            play, drive, game, prev_play, unadjusted_surrender_index,
+            unadjusted_current_percentile, unadjusted_historical_percentile)
         time_print(delay_of_game_str)
 
     if should_tweet:
         status = api.update_status(tweet_str)
         if delay_of_game:
-            api.update_status(delay_of_game_str, in_reply_to_status_id=status.id_str)
+            api.update_status(delay_of_game_str,
+                              in_reply_to_status_id=status.id_str)
 
     # Post the status to the 90th percentile account.
     if current_percentile >= 90. and should_tweet:
         ninety_status = ninety_api.update_status(tweet_str)
         if delay_of_game:
-            ninety_api.update_status(delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
+            ninety_api.update_status(
+                delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
         thread = threading.Thread(target=handle_cancel,
                                   args=(ninety_status._json, tweet_str))
         thread.start()
@@ -944,8 +984,9 @@ def check_reply(link):
     poll_content = poll_title.find_element_by_xpath("./..")
     poll_result = poll_content.find_elements_by_tag_name("span")
     poll_values = [poll_result[2], poll_result[5]]
-    poll_floats = list(map(lambda x: float(x.get_attribute("innerHTML").strip('%')),
-                      poll_values))
+    poll_floats = list(
+        map(lambda x: float(x.get_attribute("innerHTML").strip('%')),
+            poll_values))
 
     driver.close()
     time_print(("checking poll results: ", poll_floats))
@@ -1107,12 +1148,12 @@ def live_callback():
 
                     if is_final(game):
                         if play_index > 0:
-                            prev_play = drive_plays[play_index-1]
+                            prev_play = drive_plays[play_index - 1]
                         else:
                             prev_play = play
                     else:
                         if play_index + 1 < len(drive_plays):
-                            prev_play = drive_plays[play_index+1]
+                            prev_play = drive_plays[play_index + 1]
                         else:
                             prev_play = play
 
@@ -1150,9 +1191,7 @@ def main():
     parser.add_argument('--disableTwilio',
                         action='store_true',
                         dest='disableTwilio')
-    parser.add_argument('--debug',
-                        action='store_true',
-                        dest='debug')
+    parser.add_argument('--debug', action='store_true', dest='debug')
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
@@ -1186,7 +1225,6 @@ def main():
             download_punters()
             load_tweeted_plays_dict()
             seen_plays = {}
-
 
             now = get_now()
             if now.hour < 5:
