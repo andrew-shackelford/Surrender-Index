@@ -124,15 +124,18 @@ def construct_play_from_element(element):
     return play
 
 
-def get_plays_from_drive(drive):
+def get_plays_from_drive(drive, game):
     all_plays = drive.find_elements_by_tag_name("li")
     good_plays = []
-    for play in all_plays:
+    if is_final(game):
+        relevant_plays = all_plays[-3:]
+    else:
+        relevant_plays = all_plays[:3]
+    for play in relevant_plays:
         if play.get_attribute("class") == '' or play.get_attribute("class") == 'video':
             play_dct = construct_play_from_element(play)
             if 'yard_line' in play_dct:
                 good_plays.append(play_dct)
-
     return good_plays
 
 
@@ -860,65 +863,64 @@ def tweet_play(play, prev_play, drive, drives, game, game_id):
     global cancel_api
     global should_tweet
 
-    if not has_been_tweeted(play, drive, game, game_id) and has_been_seen(play, drive, game, game_id):
-        delay_of_game = is_delay_of_game(play, prev_play)
+    delay_of_game = is_delay_of_game(play, prev_play)
 
-        if delay_of_game:
-            updated_play = play.copy()
-            updated_play['dist'] = prev_play['dist']
-            updated_play['yard_line'] = prev_play['yard_line']
-            surrender_index = calc_surrender_index(updated_play, drive, drives, game)
-            current_percentile, historical_percentile = calculate_percentiles(
-                surrender_index)
-            unadjusted_surrender_index = calc_surrender_index(play, drive, drives, game)
-            unadjusted_current_percentile, unadjusted_historical_percentile = calculate_percentiles(unadjusted_surrender_index, should_update_file=False)
-            tweet_str = create_tweet_str(updated_play, drive, drives, game,
-                                     surrender_index, current_percentile,
-                                     historical_percentile, delay_of_game)
-        else:
-            surrender_index = calc_surrender_index(play, drive, drives, game)
-            current_percentile, historical_percentile = calculate_percentiles(
-                surrender_index)
-            tweet_str = create_tweet_str(play, drive, drives, game,
-                                     surrender_index, current_percentile,
-                                     historical_percentile, delay_of_game)
+    if delay_of_game:
+        updated_play = play.copy()
+        updated_play['dist'] = prev_play['dist']
+        updated_play['yard_line'] = prev_play['yard_line']
+        surrender_index = calc_surrender_index(updated_play, drive, drives, game)
+        current_percentile, historical_percentile = calculate_percentiles(
+            surrender_index)
+        unadjusted_surrender_index = calc_surrender_index(play, drive, drives, game)
+        unadjusted_current_percentile, unadjusted_historical_percentile = calculate_percentiles(unadjusted_surrender_index, should_update_file=False)
+        tweet_str = create_tweet_str(updated_play, drive, drives, game,
+                                 surrender_index, current_percentile,
+                                 historical_percentile, delay_of_game)
+    else:
+        surrender_index = calc_surrender_index(play, drive, drives, game)
+        current_percentile, historical_percentile = calculate_percentiles(
+            surrender_index)
+        tweet_str = create_tweet_str(play, drive, drives, game,
+                                 surrender_index, current_percentile,
+                                 historical_percentile, delay_of_game)
 
-        time_print(tweet_str)
+    time_print(tweet_str)
 
+    if delay_of_game:
+        try:
+            delay_of_game_str = create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile)
+            time_print(delay_of_game_str)
+        except Exception as e:
+            time_print(e)
+            traceback.print_exc()
+            time_print("delay of game str crafting error")
+
+    if should_tweet:
+        status = api.update_status(tweet_str)
         if delay_of_game:
             try:
-                delay_of_game_str = create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile)
-                time_print(delay_of_game_str)
+                api.update_status(delay_of_game_str, in_reply_to_status_id=status.id_str)
             except Exception as e:
                 time_print(e)
                 traceback.print_exc()
-                time_print("delay of game str crafting error")
+                time_print("delay of game main account tweet error")
 
-        if should_tweet:
-            status = api.update_status(tweet_str)
-            if delay_of_game:
-                try:
-                    api.update_status(delay_of_game_str, in_reply_to_status_id=status.id_str)
-                except Exception as e:
-                    time_print(e)
-                    traceback.print_exc()
-                    time_print("delay of game main account tweet error")
+    # Post the status to the 90th percentile account.
+    if current_percentile >= 90. and should_tweet:
+        ninety_status = ninety_api.update_status(tweet_str)
+        if delay_of_game:
+            try:
+                ninety_api.update_status(delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
+            except Exception as e:
+                time_print(e)
+                traceback.print_exc()
+                time_print("")
+        thread = threading.Thread(target=handle_cancel,
+                                  args=(ninety_status._json, tweet_str))
+        thread.start()
 
-        # Post the status to the 90th percentile account.
-        if current_percentile >= 90. and should_tweet:
-            ninety_status = ninety_api.update_status(tweet_str)
-            if delay_of_game:
-                try:
-                    ninety_api.update_status(delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
-                except Exception as e:
-                    time_print(e)
-                    traceback.print_exc()
-                    time_print("")
-            thread = threading.Thread(target=handle_cancel,
-                                      args=(ninety_status._json, tweet_str))
-            thread.start()
-
-        update_tweeted_plays(play, drive, game, game_id)
+    update_tweeted_plays(play, drive, game, game_id)
 
 
 ### CANCEL FUNCTIONS ###
@@ -1103,11 +1105,20 @@ def live_callback():
             drives = get_all_drives(game)
             for index, drive in enumerate(drives):
                 num_printed = 0
-                drive_plays = get_plays_from_drive(drive)
+                drive_plays = get_plays_from_drive(drive, game)
                 for play_index, play in enumerate(drive_plays):
                     if debug and index == 0 and num_printed < 3:
                         time_print(play['text'])
                         num_printed += 1
+
+                    if not is_punt(play):
+                        continue
+
+                    if has_been_tweeted(play, drive, game, game_id):
+                        continue
+
+                    if not has_been_seen(play, drive, game, game_id):
+                        continue
 
                     if is_final(game):
                         if play_index > 0:
@@ -1120,8 +1131,8 @@ def live_callback():
                         else:
                             prev_play = play
 
-                    if is_punt(play):
-                        tweet_play(play, prev_play, drive, drives, game, game_id)
+                    tweet_play(play, prev_play, drive, drives, game, game_id)
+
             time_print("Done getting data for game ID " + game_id)
         except StaleElementReferenceException:
             time_print("stale element, sleeping for 1 second.")
