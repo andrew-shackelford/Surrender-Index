@@ -888,34 +888,19 @@ def tweet_play(play, prev_play, drive, drives, game, game_id):
     time_print(tweet_str)
 
     if delay_of_game:
-        try:
-            delay_of_game_str = create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile)
-            time_print(delay_of_game_str)
-        except Exception as e:
-            time_print(e)
-            traceback.print_exc()
-            time_print("delay of game str crafting error")
+        delay_of_game_str = create_delay_of_game_str(play, drive, game, prev_play, unadjusted_surrender_index, unadjusted_current_percentile, unadjusted_historical_percentile)
+        time_print(delay_of_game_str)
 
     if should_tweet:
         status = api.update_status(tweet_str)
         if delay_of_game:
-            try:
-                api.update_status(delay_of_game_str, in_reply_to_status_id=status.id_str)
-            except Exception as e:
-                time_print(e)
-                traceback.print_exc()
-                time_print("delay of game main account tweet error")
+            api.update_status(delay_of_game_str, in_reply_to_status_id=status.id_str)
 
     # Post the status to the 90th percentile account.
     if current_percentile >= 90. and should_tweet:
         ninety_status = ninety_api.update_status(tweet_str)
         if delay_of_game:
-            try:
-                ninety_api.update_status(delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
-            except Exception as e:
-                time_print(e)
-                traceback.print_exc()
-                time_print("")
+            ninety_api.update_status(delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
         thread = threading.Thread(target=handle_cancel,
                                   args=(ninety_status._json, tweet_str))
         thread.start()
