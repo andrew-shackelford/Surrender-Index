@@ -335,6 +335,10 @@ def is_punt(play):
     return False
 
 
+def is_penalty(play):
+    return 'penalty' in play['text'].lower()
+
+
 def get_yrdln_int(play):
     return int(play['yard_line'].split(" ")[-1])
 
@@ -400,8 +404,8 @@ def calc_seconds_since_halftime(play, game):
 def calc_score_diff(play, drive, drives, game):
     drive_index = drives.index(drive)
     away, home = get_drive_scores(drives, drive_index, game)
-    if get_possessing_team(play, drive, game) == get_home_team(game):        \
-                score_diff = int(home) - int(away)
+    if get_possessing_team(play, drive, game) == get_home_team(game):
+        score_diff = int(home) - int(away)
     else:
         score_diff = int(away) - int(home)
     if debug:
@@ -666,6 +670,17 @@ def has_been_seen(play, drive, game, game_id):
             return True
     game_plays.append(deep_play_hash(play, drive, game))
     seen_plays[game_id] = game_plays
+    return False
+
+
+def penalty_has_been_seen(play, drive, game, game_id):
+    global penalty_seen_plays
+    game_plays = penalty_seen_plays.get(game_id, [])
+    for old_play in list(game_plays):
+        if old_play == deep_play_hash(play, drive, game):
+            return True
+    game_plays.append(deep_play_hash(play, drive, game))
+    penalty_seen_plays[game_id] = game_plays
     return False
 
 
@@ -1140,6 +1155,18 @@ def live_callback():
                     if not is_punt(play):
                         continue
 
+                    if is_penalty(play):
+                        if is_final(game):
+                            if play_index != len(drive_plays) - 1:
+                                continue
+                        else:
+                            if play_index != 0:
+                                continue
+
+                        if not penalty_has_been_seen(play, drive, game,
+                                                     game_id):
+                            continue
+
                     if has_been_tweeted(play, drive, game, game_id):
                         continue
 
@@ -1180,6 +1207,7 @@ def main():
     global disable_final_check
     global sleep_time
     global seen_plays
+    global penalty_seen_plays
     global twilio_client
     global completed_game_ids
 
@@ -1224,7 +1252,7 @@ def main():
             update_current_year_games()
             download_punters()
             load_tweeted_plays_dict()
-            seen_plays = {}
+            seen_plays, penalty_seen_plays = {}, {}
 
             now = get_now()
             if now.hour < 5:
