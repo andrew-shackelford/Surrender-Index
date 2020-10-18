@@ -63,7 +63,7 @@ def get_twitter_driver(link, headless=False):
         password = credentials['cancel_password']
 
     driver = get_game_driver(headless=headless)
-    driver.implicitly_wait(10)
+    driver.implicitly_wait(60)
     driver.get(link)
 
     driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
