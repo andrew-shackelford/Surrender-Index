@@ -203,6 +203,8 @@ def get_possessing_team_from_punt_distance(play, game):
 def get_possessing_team_from_drive(drive):
     accordion_header = drive.find_element_by_xpath('../../..')
     team_logo = accordion_header.find_element_by_class_name('team-logo')
+    if team_logo.get_attribute("src") == None:
+        team_logo = team_logo.find_element_by_tag_name('img')
     img_name = team_logo.get_attribute("src")
     index = img_name.find(".png")
     return img_name[index - 3:index].lstrip("/").upper()
