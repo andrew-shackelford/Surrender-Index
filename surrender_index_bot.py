@@ -998,7 +998,7 @@ def check_reply(link):
     time.sleep(3)
 
     poll_title = driver.find_element_by_xpath("//*[contains(text(), 'votes')]")
-    poll_content = poll_title.find_element_by_xpath("./..")
+    poll_content = poll_title.find_element_by_xpath("./../../../..")
     poll_result = poll_content.find_elements_by_tag_name("span")
     poll_values = [poll_result[2], poll_result[5]]
     poll_floats = list(
