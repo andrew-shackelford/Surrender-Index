@@ -1100,6 +1100,7 @@ def get_active_game_ids():
 
 def clean_games(active_game_ids):
     global games
+    global clean_immediately
     global disable_final_check
     global completed_game_ids
     for game_id in list(games.keys()):
@@ -1108,7 +1109,7 @@ def clean_games(active_game_ids):
             del games[game_id]
         if not disable_final_check:
             if is_final(games[game_id]):
-                if has_been_final(game_id):
+                if has_been_final(game_id) or clean_immediately:
                     completed_game_ids.add(game_id)
                     games[game_id].quit()
                     del games[game_id]
@@ -1206,6 +1207,7 @@ def main():
     global should_tweet
     global final_games
     global debug
+    global clean_immediately
     global disable_final_check
     global sleep_time
     global seen_plays
@@ -1241,6 +1243,7 @@ def main():
     twilio_client = initialize_twilio_client()
     sleep_time = 1
 
+    clean_immediately = True
     completed_game_ids = set()
     final_games = set()
 
@@ -1272,6 +1275,7 @@ def main():
             while get_now() < stop_date:
                 start_time = time.time()
                 download_data_for_active_games()
+                clean_immediately = False
                 sleep_time = 1.
         except KeyboardInterrupt:
             should_continue = False
