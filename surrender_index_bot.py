@@ -486,6 +486,12 @@ def calc_surrender_index(play, drive, drives, game):
 
 
 def find_punters_for_team(team):
+    # The Bucs got covid
+    if team == 'TB':
+        return set([
+            "R.Succop", "Z.Triner", "B.Pinion", "G.Joseph", "D.Colquitt",
+            "B.Maher", "G.Sanborn"
+        ])
     roster = get_game_driver()
     base_link = 'https://www.espn.com/nfl/team/roster/_/name/'
     roster_link = base_link + team
@@ -503,8 +509,6 @@ def find_punters_for_team(team):
             punters.add(first_initial_last)
         except:
             pass
-    if team == 'DEN':
-        punters.add("C.Wadman")
     roster.quit()
     return punters
 
