@@ -215,17 +215,14 @@ def get_possessing_team(play, drive, game):
     if possessing_team != '':
         return possessing_team
     possessing_team = get_possessing_team_from_punt_distance(play, game)
-    if possessing_team != '':
-        return possessing_team
-    return get_possessing_team_from_drive(drive)
+    return possessing_team if possessing_team != '' else get_possessing_team_from_drive(drive)
 
 
 ### TEAM ABBREVIATION FUNCTIONS ###
 
 
 def get_abbreviations(game):
-    elements = game.find_elements_by_class_name("abbrev")
-    return get_inner_html_of_elements(elements)
+    return get_inner_html_of_elements(game.find_elements_by_class_name("abbrev"))
 
 
 def get_home_team(game):
@@ -237,10 +234,7 @@ def get_away_team(game):
 
 
 def return_other_team(game, team):
-    if get_home_team(game) == team:
-        return get_away_team(game)
-    else:
-        return get_home_team(game)
+    return get_away_team(game) if get_home_team(game) == team else get_home_team(game)
 
 
 ### GAME INFO FUNCTIONS ###
@@ -252,10 +246,7 @@ def get_game_id(game):
 
 def get_game_header(game):
     header_eles = game.find_elements_by_css_selector('div.game-details.header')
-    if len(header_eles) > 0:
-        return header_eles[0].get_attribute("innerHTML")
-    else:
-        return ""
+    return get_inner_html_of_element(header_eles[0]) if len(header_eles) > 0 else ""
 
 
 def is_final(game):
@@ -446,7 +437,6 @@ def calc_yds_to_go_multiplier(play):
 
 def calc_score_multiplier(play, drive, drives, game):
     score_diff = calc_score_diff(play, drive, drives, game)
-
     if score_diff > 0:
         return 1.
     elif score_diff == 0:
@@ -485,8 +475,7 @@ def calc_surrender_index(play, drive, drives, game):
 ### PUNTER FUNCTIONS ###
 
 
-def find_punters_for_team(team):
-    roster = get_game_driver()
+def find_punters_for_team(team, roster):
     base_link = 'https://www.espn.com/nfl/team/roster/_/name/'
     roster_link = base_link + team
     roster.get(roster_link)
@@ -503,7 +492,6 @@ def find_punters_for_team(team):
             punters.add(first_initial_last)
         except:
             pass
-    roster.quit()
     return punters
 
 
@@ -555,9 +543,11 @@ def download_punters():
             'TEN',
             'WSH',
         ]
+        roster = get_game_driver()
         for team in team_abbreviations:
             time_print("Downloading punters for " + team)
-            punters[team] = find_punters_for_team(team)
+            punters[team] = find_punters_for_team(team, roster)
+        roster.quit()
         punters_list = {}
         for key, value in punters.items():
             punters_list[key] = list(value)
@@ -569,17 +559,11 @@ def download_punters():
 
 
 def get_pretty_time_str(time_str):
-    if time_str[0] == '0' and time_str[1] != ':':
-        return time_str[1:]
-    else:
-        return time_str
+    return time_str[1:] if time_str[0] == '0' and time_str[1] != ':' else time_str
 
 
 def get_qtr_str(qtr):
-    if 'OT' in qtr:
-        return qtr
-    else:
-        return 'the ' + get_num_str(int(qtr[0]))
+    return qtr if 'OT' in qtr else 'the ' + get_num_str(int(qtr[0]))
 
 
 def get_ordinal_suffix(num):
@@ -874,15 +858,8 @@ def create_tweet_str(play,
                      current_percentile,
                      historical_percentile,
                      delay_of_game=False):
-    if get_yrdln_int(play) == 50:
-        territory_str = '50'
-    else:
-        territory_str = play['yard_line']
-
-    if delay_of_game:
-        asterisk = "*"
-    else:
-        asterisk = ""
+    territory_str = '50' if get_yrdln_int(play) == 50 else play['yard_line']
+    asterisk = '*' if delay_of_game else ''
 
     decided_str = get_possessing_team(
         play, drive, game) + ' decided to punt to ' + return_other_team(
@@ -1005,10 +982,7 @@ def check_reply(link):
 
     driver.close()
     time_print(("checking poll results: ", poll_floats))
-    if len(poll_floats) != 2:
-        return None
-    else:
-        return poll_floats[0] >= 66.67
+    return poll_floats[0] >= 66.67 if len(poll_floats) == 2 else None
 
 
 def cancel_punt(orig_status, full_text):
@@ -1052,14 +1026,12 @@ def get_current_time_str():
 
 
 def get_now():
-    local = tz.gettz()
-    return datetime.now(tz=local)
+    return datetime.now(tz=tz.gettz())
 
 
 def update_current_year_games():
     global current_year_games
-    now = get_now()
-    two_months_ago = now - timedelta(days=60)
+    two_months_ago = get_now() - timedelta(days=60)
     scoreboard_urls = espn.get_all_scoreboard_urls("nfl", two_months_ago.year)
     current_year_games = []
 
@@ -1175,15 +1147,11 @@ def live_callback():
                         continue
 
                     if is_final(game):
-                        if play_index > 0:
-                            prev_play = drive_plays[play_index - 1]
-                        else:
-                            prev_play = play
+                        prev_play = drive_plays[play_index -
+                                                1] if play_index > 0 else play
                     else:
-                        if play_index + 1 < len(drive_plays):
-                            prev_play = drive_plays[play_index + 1]
-                        else:
-                            prev_play = play
+                        prev_play = drive_plays[play_index +
+                                                1] if play_index + 1 < len(drive_plays) else play
 
                     tweet_play(play, prev_play, drive, drives, game, game_id)
 
@@ -1231,10 +1199,7 @@ def main():
     debug = args.debug
     disable_final_check = args.disableFinalCheck
 
-    if should_tweet:
-        print("Tweeting Enabled")
-    else:
-        print("Tweeting Disabled")
+    print("Tweeting Enabled" if should_tweet else "Tweeting Disabled")
 
     api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
