@@ -845,7 +845,7 @@ def create_delay_of_game_str(play, drive, game, prev_play,
     index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + str(
         round(unadjusted_surrender_index, 2)) + ", "
     percentile_str = "ranking at the " + get_num_str(
-        unadjusted_current_percentile) + " percentile of the 2020 season."
+        unadjusted_current_percentile) + " percentile of the 2021 season."
 
     return penalty_str + old_yrdln_str + new_yrdln_str + index_str + percentile_str
 
@@ -876,7 +876,7 @@ def create_tweet_str(play,
         round(surrender_index, 2)
     ) + ', this punt ranks at the ' + get_num_str(
         current_percentile
-    ) + ' percentile of cowardly punts of the 2020 season, and the ' + get_num_str(
+    ) + ' percentile of cowardly punts of the 2021 season, and the ' + get_num_str(
         historical_percentile) + ' percentile of all punts since 2009.'
 
     return play_str + '\n\n' + surrender_str
