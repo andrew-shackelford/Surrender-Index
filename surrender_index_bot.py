@@ -722,7 +722,7 @@ def update_tweeted_plays(play, drive, game, game_id):
 
 
 def load_historical_surrender_indices():
-    with open('2009-2019_surrender_indices.npy', 'rb') as f:
+    with open('1999-2020_surrender_indices.npy', 'rb') as f:
         return np.load(f)
 
 
@@ -877,7 +877,7 @@ def create_tweet_str(play,
     ) + ', this punt ranks at the ' + get_num_str(
         current_percentile
     ) + ' percentile of cowardly punts of the 2021 season, and the ' + get_num_str(
-        historical_percentile) + ' percentile of all punts since 2009.'
+        historical_percentile) + ' percentile of all punts since 1999.'
 
     return play_str + '\n\n' + surrender_str
 
