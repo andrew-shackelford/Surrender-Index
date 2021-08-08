@@ -1285,7 +1285,7 @@ def main():
             # update current year games and punters at 5 AM every day
             if notify_using_twilio:
                 twilio_client = initialize_twilio_client()
-            else:
+            elif not notify_using_native_mail:
                 gmail_client = initialize_gmail_client()
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
