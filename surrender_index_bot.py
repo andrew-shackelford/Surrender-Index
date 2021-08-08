@@ -12,17 +12,24 @@ Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
 import argparse
+from base64 import urlsafe_b64encode
 import chromedriver_autoinstaller
 from datetime import datetime, timedelta, timezone
 from dateutil import parser, tz
+from email.mime.text import MIMEText
 import espn_scraper as espn
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 import json
 import numpy as np
 import os
+import pickle
 import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
 from selenium.common.exceptions import StaleElementReferenceException
+from subprocess import Popen,PIPE
 import sys
 import threading
 import time
@@ -50,7 +57,7 @@ should_tweet = True
 
 def get_game_driver(headless=True):
     options = webdriver.ChromeOptions()
-    if headless:
+    if headless and not debug:
         options.add_argument("headless")
     return webdriver.Chrome(options=options)
 
@@ -787,6 +794,25 @@ def initialize_api():
 
     return api, ninety_api, cancel_api
 
+def initialize_gmail_client():
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+    SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
+    email = credentials['gmail_email']
+    creds = None
+    if os.path.exists("gmail_token.pickle"):
+        with open("gmail_token.pickle", "rb") as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file('gmail_credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("gmail_token.pickle", "wb") as token:
+            pickle.dump(creds, token)
+    return build('gmail', 'v1', credentials=creds)
+
 
 def initialize_twilio_client():
     with open('credentials.json', 'r') as f:
@@ -794,32 +820,54 @@ def initialize_twilio_client():
     return Client(credentials['twilio_account_sid'],
                   credentials['twilio_auth_token'])
 
-
-def send_heartbeat_message(should_repeat=True):
+def send_message(body):
+    global gmail_client
     global twilio_client
-    global should_text
+    global notify_using_twilio
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-    while True:
-        if should_text:
-            message = twilio_client.messages.create(
-                body="The Surrender Index script is up and running.",
+
+    if notify_using_twilio:
+        message = twilio_client.messages.create(
+                body=body,
                 from_=credentials['from_phone_number'],
                 to=credentials['to_phone_number'])
+    elif notify_using_native_mail:
+        script = """tell application "Mail"
+    set newMessage to make new outgoing message with properties {{visible:false, subject:"{}", sender:"{}", content:"{}"}}
+    tell newMessage
+        make new to recipient with properties {{address:"{}"}}
+    end tell
+    send newMessage
+    activate
+end tell
+        """
+        formatted_script = script.format(body, credentials['gmail_email'], body, credentials['gmail_email'])
+        p = Popen('/usr/bin/osascript',stdin=PIPE,stdout=PIPE, encoding='utf8')
+        p.communicate(formatted_script)
+    else:
+        message = MIMEText(body)
+        message['to'] = credentials['gmail_email']
+        message['from'] = credentials['gmail_email']
+        message['subject'] = body
+        message_obj = {'raw': urlsafe_b64encode(message.as_bytes()).decode()}
+        gmail_client.users().messages().send(userId="me", body=message_obj).execute()
+
+
+def send_heartbeat_message(should_repeat=True):
+    global should_text
+    while True:
+        if should_text:
+            send_message("The Surrender Index script is up and running.")
         if not should_repeat:
             break
         time.sleep(60 * 60 * 24)
 
 
 def send_error_message(e, body="An error occurred"):
-    global twilio_client
-    with open('credentials.json', 'r') as f:
-        credentials = json.load(f)
-        if should_text:
-            message = twilio_client.messages.create(
-                body=body + ": " + str(e) + ".",
-                from_=credentials['from_phone_number'],
-                to=credentials['to_phone_number'])
+    global should_text
+    if should_text:
+        send_message(body + ": " + str(e) + ".")
 
 
 def create_delay_of_game_str(play, drive, game, prev_play,
@@ -1171,6 +1219,8 @@ def main():
     global historical_surrender_indices
     global should_text
     global should_tweet
+    global notify_using_native_mail
+    global notify_using_twilio
     global final_games
     global debug
     global clean_immediately
@@ -1178,6 +1228,7 @@ def main():
     global sleep_time
     global seen_plays
     global penalty_seen_plays
+    global gmail_client
     global twilio_client
     global completed_game_ids
 
@@ -1186,16 +1237,21 @@ def main():
     parser.add_argument('--disableTweeting',
                         action='store_true',
                         dest='disableTweeting')
-    parser.add_argument('--disableTwilio',
+    parser.add_argument('--disableNotifications',
                         action='store_true',
-                        dest='disableTwilio')
+                        dest='disableNotifications')
+    parser.add_argument('--notifyUsingTwilio',
+                        action='store_true',
+                        dest='notifyUsingTwilio')
     parser.add_argument('--debug', action='store_true', dest='debug')
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
-    should_text = not args.disableTwilio
+    should_text = not args.disableNotifications
+    notify_using_twilio = args.notifyUsingTwilio
+    notify_using_native_mail = sys.platform == "darwin" and not notify_using_twilio
     debug = args.debug
     disable_final_check = args.disableFinalCheck
 
@@ -1203,7 +1259,6 @@ def main():
 
     api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
-    twilio_client = initialize_twilio_client()
     sleep_time = 1
 
     clean_immediately = True
@@ -1216,6 +1271,10 @@ def main():
             chromedriver_autoinstaller.install()
 
             # update current year games and punters at 5 AM every day
+            if notify_using_twilio:
+                twilio_client = initialize_twilio_client()
+            else:
+                gmail_client = initialize_gmail_client()
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
             download_punters()
