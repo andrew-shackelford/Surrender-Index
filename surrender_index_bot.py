@@ -29,7 +29,7 @@ import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
 from selenium.common.exceptions import StaleElementReferenceException
-from subprocess import Popen,PIPE
+from subprocess import Popen, PIPE
 import sys
 import threading
 import time
@@ -203,14 +203,14 @@ def get_possessing_team_from_punt_distance(play, game):
             else:
                 return return_other_team(game, play['yard_line'].split(" ")[0])
         return ''
-    except:
+    except BaseException:
         return ''
 
 
 def get_possessing_team_from_drive(drive):
     accordion_header = drive.find_element_by_xpath('../../..')
     team_logo = accordion_header.find_element_by_class_name('team-logo')
-    if team_logo.get_attribute("src") == None:
+    if team_logo.get_attribute("src") is None:
         team_logo = team_logo.find_element_by_tag_name('img')
     img_name = team_logo.get_attribute("src")
     index = img_name.find(".png")
@@ -222,14 +222,16 @@ def get_possessing_team(play, drive, game):
     if possessing_team != '':
         return possessing_team
     possessing_team = get_possessing_team_from_punt_distance(play, game)
-    return possessing_team if possessing_team != '' else get_possessing_team_from_drive(drive)
+    return possessing_team if possessing_team != '' else get_possessing_team_from_drive(
+        drive)
 
 
 ### TEAM ABBREVIATION FUNCTIONS ###
 
 
 def get_abbreviations(game):
-    return get_inner_html_of_elements(game.find_elements_by_class_name("abbrev"))
+    return get_inner_html_of_elements(
+        game.find_elements_by_class_name("abbrev"))
 
 
 def get_home_team(game):
@@ -241,7 +243,8 @@ def get_away_team(game):
 
 
 def return_other_team(game, team):
-    return get_away_team(game) if get_home_team(game) == team else get_home_team(game)
+    return get_away_team(game) if get_home_team(
+        game) == team else get_home_team(game)
 
 
 ### GAME INFO FUNCTIONS ###
@@ -253,7 +256,8 @@ def get_game_id(game):
 
 def get_game_header(game):
     header_eles = game.find_elements_by_css_selector('div.game-details.header')
-    return get_inner_html_of_element(header_eles[0]) if len(header_eles) > 0 else ""
+    return get_inner_html_of_element(
+        header_eles[0]) if len(header_eles) > 0 else ""
 
 
 def is_final(game):
@@ -497,7 +501,7 @@ def find_punters_for_team(team, roster):
             split = full_name.split(" ")
             first_initial_last = full_name[0] + '.' + split[-1]
             punters.add(first_initial_last)
-        except:
+        except BaseException:
             pass
     return punters
 
@@ -697,7 +701,8 @@ def deep_play_hash(play, drive, game):
     down = play['down']
     dist = play['dist']
     yard_line = play['yard_line']
-    return possessing_team + '_' + qtr + '_' + time + '_' + down + '_' + dist + '_' + yard_line
+    return possessing_team + '_' + qtr + '_' + time + \
+        '_' + down + '_' + dist + '_' + yard_line
 
 
 def load_tweeted_plays_dict():
@@ -794,6 +799,7 @@ def initialize_api():
 
     return api, ninety_api, cancel_api
 
+
 def initialize_gmail_client():
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
@@ -807,7 +813,8 @@ def initialize_gmail_client():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('gmail_credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'gmail_credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
         with open("gmail_token.pickle", "wb") as token:
             pickle.dump(creds, token)
@@ -820,6 +827,7 @@ def initialize_twilio_client():
     return Client(credentials['twilio_account_sid'],
                   credentials['twilio_auth_token'])
 
+
 def send_message(body):
     global gmail_client
     global twilio_client
@@ -829,9 +837,9 @@ def send_message(body):
 
     if notify_using_twilio:
         message = twilio_client.messages.create(
-                body=body,
-                from_=credentials['from_phone_number'],
-                to=credentials['to_phone_number'])
+            body=body,
+            from_=credentials['from_phone_number'],
+            to=credentials['to_phone_number'])
     elif notify_using_native_mail:
         script = """tell application "Mail"
     set newMessage to make new outgoing message with properties {{visible:false, subject:"{}", sender:"{}", content:"{}"}}
@@ -842,8 +850,10 @@ def send_message(body):
     activate
 end tell
         """
-        formatted_script = script.format(body, credentials['gmail_email'], body, credentials['gmail_email'])
-        p = Popen('/usr/bin/osascript',stdin=PIPE,stdout=PIPE, encoding='utf8')
+        formatted_script = script.format(
+            body, credentials['gmail_email'], body, credentials['gmail_email'])
+        p = Popen('/usr/bin/osascript', stdin=PIPE,
+                  stdout=PIPE, encoding='utf8')
         p.communicate(formatted_script)
     else:
         message = MIMEText(body)
@@ -1086,10 +1096,10 @@ def update_current_year_games():
     for scoreboard_url in scoreboard_urls:
         data = None
         backoff_time = 1.
-        while data == None:
+        while data is None:
             try:
                 data = espn.get_url(scoreboard_url)
-            except:
+            except BaseException:
                 time.sleep(backoff_time)
                 backoff_time *= 2.
         for event in data['content']['sbData']['events']:
@@ -1105,13 +1115,15 @@ def get_active_game_ids():
 
     for game in current_year_games:
         if game['id'] in completed_game_ids:
-            # ignore any games that are marked completed (which is done by checking if ESPN says final)
+            # ignore any games that are marked completed (which is done by
+            # checking if ESPN says final)
             continue
         game_time = parser.parse(
             game['date']).replace(tzinfo=timezone.utc).astimezone(tz=None)
         if game_time - timedelta(minutes=15) < now and game_time + timedelta(
                 hours=6) > now:
-            # game should start within 15 minutes and not started more than 6 hours ago
+            # game should start within 15 minutes and not started more than 6
+            # hours ago
             active_game_ids.add(game['id'])
     return active_game_ids
 
