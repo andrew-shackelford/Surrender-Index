@@ -113,7 +113,7 @@ def get_twitter_driver(link, headless=False):
 def get_possessing_team(play, game):
     try:
         team_id = play['start']['team']['id']
-    except:
+    except BaseException:
         team_id = play['end']['team']['id']
     for team in game['boxscore']['teams']:
         if team['team']['id'] == team_id:
@@ -140,10 +140,12 @@ def return_other_team(game, team):
 def is_final(game):
     return game['header']['competitions'][0]['status']['type']['name'] == 'STATUS_FINAL'
 
+
 def is_postseason(game):
     return game['header']['season']['type'] > 2
 
 ### PLAY FUNCTIONS ###
+
 
 def is_punt(drive):
     return 'punt' in drive['result'].lower()
@@ -559,11 +561,12 @@ def create_delay_of_game_str(play, drive, game, prev_play,
     penalty_str = "*" + get_possessing_team(
         play,
         game) + " committed a (likely intentional) delay of game penalty, "
-    old_yrdln_str = "moving the play from " + prev_play['start']['shortDownDistanceText'] + " at the " + prev_play['start'][
-            'possessionText']
-    new_yrdln_str = " to " + play['start']['shortDownDistanceText'] + " at the " + play['start']['possessionText'] + ".\n\n"
-    index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + str(
-        round(unadjusted_surrender_index, 2)) + ", "
+    old_yrdln_str = "moving the play from " + \
+        prev_play['start']['shortDownDistanceText'] + " at the " + prev_play['start']['possessionText']
+    new_yrdln_str = " to " + play['start']['shortDownDistanceText'] + \
+        " at the " + play['start']['possessionText'] + ".\n\n"
+    index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + \
+        str(round(unadjusted_surrender_index, 2)) + ", "
     percentile_str = "ranking at the " + get_num_str(
         unadjusted_current_percentile) + " percentile of the 2021 season."
 
@@ -587,8 +590,8 @@ def create_tweet_str(play,
     yrdln_str = ' from the ' + territory_str + asterisk + ' on '
     down_str = play['start']['shortDownDistanceText'] + asterisk
     clock_str = ' with ' + play['clock']['displayValue'] + ' remaining in '
-    qtr_str = get_qtr_str(play['period']['number']) + ' while ' + get_score_str(
-        prev_play, game) + '.'
+    qtr_str = get_qtr_str(play['period']['number']) + \
+        ' while ' + get_score_str(prev_play, game) + '.'
 
     play_str = decided_str + yrdln_str + down_str + clock_str + qtr_str
 
@@ -614,7 +617,8 @@ def tweet_play(play, prev_play, drive, game, game_id):
         updated_play = play.copy()
         updated_play['start'] = prev_play['start']
         updated_play['end'] = prev_play['end']
-        surrender_index = calc_surrender_index(updated_play, prev_play, drive, game)
+        surrender_index = calc_surrender_index(
+            updated_play, prev_play, drive, game)
         current_percentile, historical_percentile = calculate_percentiles(
             surrender_index)
         unadjusted_surrender_index = calc_surrender_index(
@@ -710,8 +714,8 @@ def cancel_punt(orig_status, full_text):
 
     ninety_api.destroy_status(orig_status['id'])
     cancel_status = cancel_api.update_status(full_text)._json
-    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + cancel_status[
-        'id_str']
+    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + \
+        cancel_status['id_str']
 
     time.sleep(10)
     ninety_api.update_status(new_cancel_text)
@@ -719,8 +723,8 @@ def cancel_punt(orig_status, full_text):
 
 def handle_cancel(orig_status, full_text):
     try:
-        orig_link = 'https://twitter.com/surrender_idx90/status/' + orig_status[
-            'id_str']
+        orig_link = 'https://twitter.com/surrender_idx90/status/' + \
+            orig_status['id_str']
         post_reply_poll(orig_link)
         if check_reply(orig_link):
             cancel_punt(orig_status, full_text)
@@ -788,6 +792,7 @@ def get_active_game_ids():
             active_game_ids.add(game['id'])
 
     return active_game_ids
+
 
 def download_data_for_active_games():
     global games
@@ -882,7 +887,10 @@ def main():
                         action='store_true',
                         dest='notifyUsingTwilio')
     parser.add_argument('--debug', action='store_true', dest='debug')
-    parser.add_argument('--notHeadless', action='store_true', dest='notHeadless')
+    parser.add_argument(
+        '--notHeadless',
+        action='store_true',
+        dest='notHeadless')
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
