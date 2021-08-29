@@ -271,89 +271,6 @@ def calc_surrender_index(play, prev_play, drive, game):
     return field_pos_score * yds_to_go_mult * score_mult * clock_mult
 
 
-### PUNTER FUNCTIONS ###
-
-
-def find_punters_for_team(team, roster):
-    base_link = 'https://www.espn.com/nfl/team/roster/_/name/'
-    roster_link = base_link + team
-    roster.get(roster_link)
-    header = roster.find_element_by_css_selector("div.Special.Teams")
-    parents = header.find_elements_by_css_selector(
-        "td.Table__TD:not(.Table__TD--headshot)")
-    punters = set()
-    for parent in parents:
-        try:
-            ele = parent.find_element_by_class_name("AnchorLink")
-            full_name = ele.get_attribute("innerHTML")
-            split = full_name.split(" ")
-            first_initial_last = full_name[0] + '.' + split[-1]
-            punters.add(first_initial_last)
-        except BaseException:
-            pass
-    return punters
-
-
-def download_punters():
-    global punters
-    punters = {}
-    if os.path.exists('punters.json'):
-        file_mod_time = os.path.getmtime('punters.json')
-    else:
-        file_mod_time = 0.
-    if time.time() - file_mod_time < 60 * 60 * 12:
-        # if file modified within past 12 hours
-        with open('punters.json', 'r') as f:
-            punters_list = json.load(f)
-            for key, value in punters_list.items():
-                punters[key] = set(value)
-    else:
-        team_abbreviations = [
-            'ARI',
-            'ATL',
-            'BAL',
-            'BUF',
-            'CAR',
-            'CHI',
-            'CIN',
-            'CLE',
-            'DAL',
-            'DEN',
-            'DET',
-            'GB',
-            'HOU',
-            'IND',
-            'JAX',
-            'KC',
-            'LAC',
-            'LAR',
-            'LV',
-            'MIA',
-            'MIN',
-            'NE',
-            'NO',
-            'NYG',
-            'NYJ',
-            'PHI',
-            'PIT',
-            'SEA',
-            'SF',
-            'TB',
-            'TEN',
-            'WSH',
-        ]
-        roster = get_game_driver()
-        for team in team_abbreviations:
-            time_print("Downloading punters for " + team)
-            punters[team] = find_punters_for_team(team, roster)
-        roster.quit()
-        punters_list = {}
-        for key, value in punters.items():
-            punters_list[key] = list(value)
-        with open('punters.json', 'w') as f:
-            json.dump(punters_list, f)
-
-
 ### STRING FORMAT FUNCTIONS ###
 
 
@@ -930,10 +847,9 @@ def live_callback():
             if is_final(game):
                 if has_been_final(game_id):
                     completed_game_ids.add(game_id)
-
-        time_print("Done getting data for game ID " + game_id)
     while (time.time() < start_time + 60):
         time.sleep(1)
+    print("")
 
 
 def main():
@@ -948,11 +864,8 @@ def main():
     global final_games
     global debug
     global not_headless
-    global clean_immediately
-    global disable_final_check
     global sleep_time
     global seen_plays
-    global penalty_seen_plays
     global gmail_client
     global twilio_client
     global completed_game_ids
@@ -980,7 +893,6 @@ def main():
     notify_using_native_mail = sys.platform == "darwin" and not notify_using_twilio
     debug = args.debug
     not_headless = args.notHeadless
-    disable_final_check = args.disableFinalCheck
 
     print("Tweeting Enabled" if should_tweet else "Tweeting Disabled")
 
@@ -988,7 +900,6 @@ def main():
     historical_surrender_indices = load_historical_surrender_indices()
     sleep_time = 1
 
-    clean_immediately = True
     completed_game_ids = set()
     final_games = set()
 
@@ -997,16 +908,15 @@ def main():
         try:
             chromedriver_autoinstaller.install()
 
-            # update current year games and punters at 5 AM every day
+            # update current year games at 5 AM every day
             if notify_using_twilio:
                 twilio_client = initialize_twilio_client()
             elif not notify_using_native_mail:
                 gmail_client = initialize_gmail_client()
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
-            download_punters()
             load_tweeted_plays_dict()
-            seen_plays, penalty_seen_plays = {}, {}
+            seen_plays = {}
 
             now = get_now()
             if now.hour < 5:
@@ -1024,7 +934,6 @@ def main():
             while get_now() < stop_date:
                 start_time = time.time()
                 download_data_for_active_games()
-                clean_immediately = False
                 sleep_time = 1.
         except KeyboardInterrupt:
             should_continue = False
