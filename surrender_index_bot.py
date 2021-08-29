@@ -56,8 +56,10 @@ should_tweet = True
 
 
 def get_game_driver(headless=True):
+    global debug
+    global not_headless
     options = webdriver.ChromeOptions()
-    if headless and not debug:
+    if headless and not debug and not not_headless:
         options.add_argument("headless")
     return webdriver.Chrome(options=options)
 
@@ -847,7 +849,9 @@ def send_message(body):
         make new to recipient with properties {{address:"{}"}}
     end tell
     send newMessage
-    activate
+end tell
+tell application "System Events"
+    set visible of application process "Mail" to false
 end tell
         """
         formatted_script = script.format(
@@ -1235,6 +1239,7 @@ def main():
     global notify_using_twilio
     global final_games
     global debug
+    global not_headless
     global clean_immediately
     global disable_final_check
     global sleep_time
@@ -1256,6 +1261,7 @@ def main():
                         action='store_true',
                         dest='notifyUsingTwilio')
     parser.add_argument('--debug', action='store_true', dest='debug')
+    parser.add_argument('--notHeadless', action='store_true', dest='notHeadless')
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
@@ -1265,6 +1271,7 @@ def main():
     notify_using_twilio = args.notifyUsingTwilio
     notify_using_native_mail = sys.platform == "darwin" and not notify_using_twilio
     debug = args.debug
+    not_headless = args.notHeadless
     disable_final_check = args.disableFinalCheck
 
     print("Tweeting Enabled" if should_tweet else "Tweeting Disabled")
