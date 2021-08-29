@@ -12,17 +12,24 @@ Inspired by SB Nation's Jon Bois @jon_bois.
 """
 
 import argparse
+from base64 import urlsafe_b64encode
 import chromedriver_autoinstaller
 from datetime import datetime, timedelta, timezone
 from dateutil import parser, tz
+from email.mime.text import MIMEText
 import espn_scraper as espn
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 import json
 import numpy as np
 import os
+import pickle
 import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
 from selenium.common.exceptions import StaleElementReferenceException
+from subprocess import Popen, PIPE
 import sys
 import threading
 import time
@@ -49,8 +56,10 @@ should_tweet = True
 
 
 def get_game_driver(headless=True):
+    global debug
+    global not_headless
     options = webdriver.ChromeOptions()
-    if headless:
+    if headless and not debug and not not_headless:
         options.add_argument("headless")
     return webdriver.Chrome(options=options)
 
@@ -196,14 +205,14 @@ def get_possessing_team_from_punt_distance(play, game):
             else:
                 return return_other_team(game, play['yard_line'].split(" ")[0])
         return ''
-    except:
+    except BaseException:
         return ''
 
 
 def get_possessing_team_from_drive(drive):
     accordion_header = drive.find_element_by_xpath('../../..')
     team_logo = accordion_header.find_element_by_class_name('team-logo')
-    if team_logo.get_attribute("src") == None:
+    if team_logo.get_attribute("src") is None:
         team_logo = team_logo.find_element_by_tag_name('img')
     img_name = team_logo.get_attribute("src")
     index = img_name.find(".png")
@@ -215,17 +224,16 @@ def get_possessing_team(play, drive, game):
     if possessing_team != '':
         return possessing_team
     possessing_team = get_possessing_team_from_punt_distance(play, game)
-    if possessing_team != '':
-        return possessing_team
-    return get_possessing_team_from_drive(drive)
+    return possessing_team if possessing_team != '' else get_possessing_team_from_drive(
+        drive)
 
 
 ### TEAM ABBREVIATION FUNCTIONS ###
 
 
 def get_abbreviations(game):
-    elements = game.find_elements_by_class_name("abbrev")
-    return get_inner_html_of_elements(elements)
+    return get_inner_html_of_elements(
+        game.find_elements_by_class_name("abbrev"))
 
 
 def get_home_team(game):
@@ -237,10 +245,8 @@ def get_away_team(game):
 
 
 def return_other_team(game, team):
-    if get_home_team(game) == team:
-        return get_away_team(game)
-    else:
-        return get_home_team(game)
+    return get_away_team(game) if get_home_team(
+        game) == team else get_home_team(game)
 
 
 ### GAME INFO FUNCTIONS ###
@@ -252,10 +258,8 @@ def get_game_id(game):
 
 def get_game_header(game):
     header_eles = game.find_elements_by_css_selector('div.game-details.header')
-    if len(header_eles) > 0:
-        return header_eles[0].get_attribute("innerHTML")
-    else:
-        return ""
+    return get_inner_html_of_element(
+        header_eles[0]) if len(header_eles) > 0 else ""
 
 
 def is_final(game):
@@ -446,7 +450,6 @@ def calc_yds_to_go_multiplier(play):
 
 def calc_score_multiplier(play, drive, drives, game):
     score_diff = calc_score_diff(play, drive, drives, game)
-
     if score_diff > 0:
         return 1.
     elif score_diff == 0:
@@ -485,8 +488,7 @@ def calc_surrender_index(play, drive, drives, game):
 ### PUNTER FUNCTIONS ###
 
 
-def find_punters_for_team(team):
-    roster = get_game_driver()
+def find_punters_for_team(team, roster):
     base_link = 'https://www.espn.com/nfl/team/roster/_/name/'
     roster_link = base_link + team
     roster.get(roster_link)
@@ -501,9 +503,8 @@ def find_punters_for_team(team):
             split = full_name.split(" ")
             first_initial_last = full_name[0] + '.' + split[-1]
             punters.add(first_initial_last)
-        except:
+        except BaseException:
             pass
-    roster.quit()
     return punters
 
 
@@ -555,9 +556,11 @@ def download_punters():
             'TEN',
             'WSH',
         ]
+        roster = get_game_driver()
         for team in team_abbreviations:
             time_print("Downloading punters for " + team)
-            punters[team] = find_punters_for_team(team)
+            punters[team] = find_punters_for_team(team, roster)
+        roster.quit()
         punters_list = {}
         for key, value in punters.items():
             punters_list[key] = list(value)
@@ -569,17 +572,11 @@ def download_punters():
 
 
 def get_pretty_time_str(time_str):
-    if time_str[0] == '0' and time_str[1] != ':':
-        return time_str[1:]
-    else:
-        return time_str
+    return time_str[1:] if time_str[0] == '0' and time_str[1] != ':' else time_str
 
 
 def get_qtr_str(qtr):
-    if 'OT' in qtr:
-        return qtr
-    else:
-        return 'the ' + get_num_str(int(qtr[0]))
+    return qtr if 'OT' in qtr else 'the ' + get_num_str(int(qtr[0]))
 
 
 def get_ordinal_suffix(num):
@@ -706,7 +703,8 @@ def deep_play_hash(play, drive, game):
     down = play['down']
     dist = play['dist']
     yard_line = play['yard_line']
-    return possessing_team + '_' + qtr + '_' + time + '_' + down + '_' + dist + '_' + yard_line
+    return possessing_team + '_' + qtr + '_' + time + \
+        '_' + down + '_' + dist + '_' + yard_line
 
 
 def load_tweeted_plays_dict():
@@ -738,7 +736,7 @@ def update_tweeted_plays(play, drive, game, game_id):
 
 
 def load_historical_surrender_indices():
-    with open('2009-2019_surrender_indices.npy', 'rb') as f:
+    with open('1999-2020_surrender_indices.npy', 'rb') as f:
         return np.load(f)
 
 
@@ -804,6 +802,27 @@ def initialize_api():
     return api, ninety_api, cancel_api
 
 
+def initialize_gmail_client():
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+    SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
+    email = credentials['gmail_email']
+    creds = None
+    if os.path.exists("gmail_token.pickle"):
+        with open("gmail_token.pickle", "rb") as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'gmail_credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("gmail_token.pickle", "wb") as token:
+            pickle.dump(creds, token)
+    return build('gmail', 'v1', credentials=creds)
+
+
 def initialize_twilio_client():
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
@@ -811,31 +830,58 @@ def initialize_twilio_client():
                   credentials['twilio_auth_token'])
 
 
-def send_heartbeat_message(should_repeat=True):
+def send_message(body):
+    global gmail_client
     global twilio_client
-    global should_text
+    global notify_using_twilio
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
+
+    if notify_using_twilio:
+        message = twilio_client.messages.create(
+            body=body,
+            from_=credentials['from_phone_number'],
+            to=credentials['to_phone_number'])
+    elif notify_using_native_mail:
+        script = """tell application "Mail"
+    set newMessage to make new outgoing message with properties {{visible:false, subject:"{}", sender:"{}", content:"{}"}}
+    tell newMessage
+        make new to recipient with properties {{address:"{}"}}
+    end tell
+    send newMessage
+end tell
+tell application "System Events"
+    set visible of application process "Mail" to false
+end tell
+        """
+        formatted_script = script.format(
+            body, credentials['gmail_email'], body, credentials['gmail_email'])
+        p = Popen('/usr/bin/osascript', stdin=PIPE,
+                  stdout=PIPE, encoding='utf8')
+        p.communicate(formatted_script)
+    else:
+        message = MIMEText(body)
+        message['to'] = credentials['gmail_email']
+        message['from'] = credentials['gmail_email']
+        message['subject'] = body
+        message_obj = {'raw': urlsafe_b64encode(message.as_bytes()).decode()}
+        gmail_client.users().messages().send(userId="me", body=message_obj).execute()
+
+
+def send_heartbeat_message(should_repeat=True):
+    global should_text
     while True:
         if should_text:
-            message = twilio_client.messages.create(
-                body="The Surrender Index script is up and running.",
-                from_=credentials['from_phone_number'],
-                to=credentials['to_phone_number'])
+            send_message("The Surrender Index script is up and running.")
         if not should_repeat:
             break
         time.sleep(60 * 60 * 24)
 
 
 def send_error_message(e, body="An error occurred"):
-    global twilio_client
-    with open('credentials.json', 'r') as f:
-        credentials = json.load(f)
-        if should_text:
-            message = twilio_client.messages.create(
-                body=body + ": " + str(e) + ".",
-                from_=credentials['from_phone_number'],
-                to=credentials['to_phone_number'])
+    global should_text
+    if should_text:
+        send_message(body + ": " + str(e) + ".")
 
 
 def create_delay_of_game_str(play, drive, game, prev_play,
@@ -861,7 +907,7 @@ def create_delay_of_game_str(play, drive, game, prev_play,
     index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + str(
         round(unadjusted_surrender_index, 2)) + ", "
     percentile_str = "ranking at the " + get_num_str(
-        unadjusted_current_percentile) + " percentile of the 2020 season."
+        unadjusted_current_percentile) + " percentile of the 2021 season."
 
     return penalty_str + old_yrdln_str + new_yrdln_str + index_str + percentile_str
 
@@ -874,15 +920,8 @@ def create_tweet_str(play,
                      current_percentile,
                      historical_percentile,
                      delay_of_game=False):
-    if get_yrdln_int(play) == 50:
-        territory_str = '50'
-    else:
-        territory_str = play['yard_line']
-
-    if delay_of_game:
-        asterisk = "*"
-    else:
-        asterisk = ""
+    territory_str = '50' if get_yrdln_int(play) == 50 else play['yard_line']
+    asterisk = '*' if delay_of_game else ''
 
     decided_str = get_possessing_team(
         play, drive, game) + ' decided to punt to ' + return_other_team(
@@ -899,8 +938,8 @@ def create_tweet_str(play,
         round(surrender_index, 2)
     ) + ', this punt ranks at the ' + get_num_str(
         current_percentile
-    ) + ' percentile of cowardly punts of the 2020 season, and the ' + get_num_str(
-        historical_percentile) + ' percentile of all punts since 2009.'
+    ) + ' percentile of cowardly punts of the 2021 season, and the ' + get_num_str(
+        historical_percentile) + ' percentile of all punts since 1999.'
 
     return play_str + '\n\n' + surrender_str
 
@@ -1005,10 +1044,7 @@ def check_reply(link):
 
     driver.close()
     time_print(("checking poll results: ", poll_floats))
-    if len(poll_floats) != 2:
-        return None
-    else:
-        return poll_floats[0] >= 66.67
+    return poll_floats[0] >= 66.67 if len(poll_floats) == 2 else None
 
 
 def cancel_punt(orig_status, full_text):
@@ -1052,24 +1088,22 @@ def get_current_time_str():
 
 
 def get_now():
-    local = tz.gettz()
-    return datetime.now(tz=local)
+    return datetime.now(tz=tz.gettz())
 
 
 def update_current_year_games():
     global current_year_games
-    now = get_now()
-    two_months_ago = now - timedelta(days=60)
+    two_months_ago = get_now() - timedelta(days=60)
     scoreboard_urls = espn.get_all_scoreboard_urls("nfl", two_months_ago.year)
     current_year_games = []
 
     for scoreboard_url in scoreboard_urls:
         data = None
         backoff_time = 1.
-        while data == None:
+        while data is None:
             try:
                 data = espn.get_url(scoreboard_url)
-            except:
+            except BaseException:
                 time.sleep(backoff_time)
                 backoff_time *= 2.
         for event in data['content']['sbData']['events']:
@@ -1085,13 +1119,15 @@ def get_active_game_ids():
 
     for game in current_year_games:
         if game['id'] in completed_game_ids:
-            # ignore any games that are marked completed (which is done by checking if ESPN says final)
+            # ignore any games that are marked completed (which is done by
+            # checking if ESPN says final)
             continue
         game_time = parser.parse(
             game['date']).replace(tzinfo=timezone.utc).astimezone(tz=None)
         if game_time - timedelta(minutes=15) < now and game_time + timedelta(
                 hours=6) > now:
-            # game should start within 15 minutes and not started more than 6 hours ago
+            # game should start within 15 minutes and not started more than 6
+            # hours ago
             active_game_ids.add(game['id'])
     return active_game_ids
 
@@ -1175,15 +1211,11 @@ def live_callback():
                         continue
 
                     if is_final(game):
-                        if play_index > 0:
-                            prev_play = drive_plays[play_index - 1]
-                        else:
-                            prev_play = play
+                        prev_play = drive_plays[play_index -
+                                                1] if play_index > 0 else play
                     else:
-                        if play_index + 1 < len(drive_plays):
-                            prev_play = drive_plays[play_index + 1]
-                        else:
-                            prev_play = play
+                        prev_play = drive_plays[play_index +
+                                                1] if play_index + 1 < len(drive_plays) else play
 
                     tweet_play(play, prev_play, drive, drives, game, game_id)
 
@@ -1203,13 +1235,17 @@ def main():
     global historical_surrender_indices
     global should_text
     global should_tweet
+    global notify_using_native_mail
+    global notify_using_twilio
     global final_games
     global debug
+    global not_headless
     global clean_immediately
     global disable_final_check
     global sleep_time
     global seen_plays
     global penalty_seen_plays
+    global gmail_client
     global twilio_client
     global completed_game_ids
 
@@ -1218,27 +1254,30 @@ def main():
     parser.add_argument('--disableTweeting',
                         action='store_true',
                         dest='disableTweeting')
-    parser.add_argument('--disableTwilio',
+    parser.add_argument('--disableNotifications',
                         action='store_true',
-                        dest='disableTwilio')
+                        dest='disableNotifications')
+    parser.add_argument('--notifyUsingTwilio',
+                        action='store_true',
+                        dest='notifyUsingTwilio')
     parser.add_argument('--debug', action='store_true', dest='debug')
+    parser.add_argument('--notHeadless', action='store_true', dest='notHeadless')
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
-    should_text = not args.disableTwilio
+    should_text = not args.disableNotifications
+    notify_using_twilio = args.notifyUsingTwilio
+    notify_using_native_mail = sys.platform == "darwin" and not notify_using_twilio
     debug = args.debug
+    not_headless = args.notHeadless
     disable_final_check = args.disableFinalCheck
 
-    if should_tweet:
-        print("Tweeting Enabled")
-    else:
-        print("Tweeting Disabled")
+    print("Tweeting Enabled" if should_tweet else "Tweeting Disabled")
 
     api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
-    twilio_client = initialize_twilio_client()
     sleep_time = 1
 
     clean_immediately = True
@@ -1251,6 +1290,10 @@ def main():
             chromedriver_autoinstaller.install()
 
             # update current year games and punters at 5 AM every day
+            if notify_using_twilio:
+                twilio_client = initialize_twilio_client()
+            elif not notify_using_native_mail:
+                gmail_client = initialize_gmail_client()
             send_heartbeat_message(should_repeat=False)
             update_current_year_games()
             download_punters()
