@@ -111,10 +111,9 @@ def get_twitter_driver(link, headless=False):
 
 
 def get_possessing_team(play, game):
-    try:
-        team_id = play['start']['team']['id']
-    except BaseException:
-        team_id = play['end']['team']['id']
+    team_id = play.get('start', {}).get('team', {}).get('id')
+    if not team_id:
+        team_id = play.get('end', {}).get('team', {}).get('id')
     for team in game['boxscore']['teams']:
         if team['team']['id'] == team_id:
             return team['team']['abbreviation']
@@ -138,7 +137,11 @@ def return_other_team(game, team):
 ### GAME INFO FUNCTIONS ###
 
 def is_final(game):
-    return game['header']['competitions'][0]['status']['type']['name'] == 'STATUS_FINAL'
+    competitions = game.get('header', {}).get('competitions', [])
+    if len(competitions) > 0:
+        return competitions[0].get('status', {}).get(
+            'type', {}).get('name') == 'STATUS_FINAL'
+    return None
 
 
 def is_postseason(game):
@@ -148,7 +151,7 @@ def is_postseason(game):
 
 
 def is_punt(drive):
-    return 'punt' in drive['result'].lower()
+    return 'punt' in drive.get('result', '').lower()
 
 
 def get_yrdln_int(play):
@@ -353,15 +356,15 @@ def is_delay_of_game(play, prev_play):
 def has_been_tweeted(drive, game_id):
     global tweeted_plays
     game_plays = tweeted_plays.get(game_id, [])
-    return drive['id'] in game_plays
+    return drive.get('id', '') in game_plays
 
 
 def has_been_seen(drive, game_id):
     global seen_plays
     game_plays = seen_plays.get(game_id, [])
-    if drive['id'] in game_plays:
+    if drive.get('id', '') in game_plays:
         return True
-    game_plays.append(drive['id'])
+    game_plays.append(drive.get('id', ''))
     seen_plays[game_id] = game_plays
     return False
 
@@ -804,7 +807,16 @@ def download_data_for_active_games():
     for game_id in active_game_ids:
         base_link = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event="
         game_link = base_link + game_id
-        games[game_id] = requests.get(game_link).json()
+        try:
+            games[game_id] = requests.get(game_link).json()
+        except BaseException:
+            traceback.print_exc()
+            time_print("Error occurred:")
+            time_print(e)
+            error_str = "Failed to download data for game_id " + game_id
+            time_print(error_str)
+            send_error_message(e, error_str)
+
     live_callback()
 
 ### MAIN FUNCTIONS ###
@@ -815,14 +827,14 @@ def live_callback():
     start_time = time.time()
     for game_id, game in games.items():
         time_print('Getting data for game ID ' + game_id)
-        if 'drives' in game and 'previous' in game['drives']:
+        if 'previous' in game.get('drives', {}):
 
             drives = game['drives']['previous']
             for index, drive in enumerate(drives):
                 if 'result' not in drive:
                     continue
 
-                drive_plays = drive['plays']
+                drive_plays = drive.get('plays', [])
                 if len(drive_plays) < 2:
                     continue
 
@@ -839,7 +851,7 @@ def live_callback():
                 for index, play in enumerate(drive_plays):
                     if index == 0:
                         continue
-                    if 'punt' in play['type']['text'].lower():
+                    if 'punt' in play.get('type', {}).get('text', '').lower():
                         punt = play
                         prev_play = drive_plays[index - 1]
 
@@ -847,7 +859,16 @@ def live_callback():
                     punt = drive_plays[-1]
                     prev_play = drive_plays[-2]
 
-                tweet_play(punt, prev_play, drive, game, game_id)
+                try:
+                    tweet_play(punt, prev_play, drive, game, game_id)
+                except BaseException:
+                    traceback.print_exc()
+                    time_print("Error occurred:")
+                    time_print(e)
+                    error_str = "Failed to tweet play from drive " + \
+                        drive.get('id', '')
+                    time_print(error_str)
+                    send_error_message(e, error_str)
 
             if is_final(game):
                 if has_been_final(game_id):
