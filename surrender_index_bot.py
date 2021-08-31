@@ -826,6 +826,15 @@ def live_callback():
                 if len(drive_plays) < 2:
                     continue
 
+                if not is_punt(drive):
+                    continue
+
+                if has_been_tweeted(drive, game_id):
+                    continue
+
+                if not has_been_seen(drive, game_id):
+                    continue
+
                 punt = None
                 for index, play in enumerate(drive_plays):
                     if index == 0:
@@ -837,15 +846,6 @@ def live_callback():
                 if not punt:
                     punt = drive_plays[-1]
                     prev_play = drive_plays[-2]
-
-                if not is_punt(drive):
-                    continue
-
-                if has_been_tweeted(drive, game_id):
-                    continue
-
-                if not has_been_seen(drive, game_id):
-                    continue
 
                 tweet_play(punt, prev_play, drive, game, game_id)
 
