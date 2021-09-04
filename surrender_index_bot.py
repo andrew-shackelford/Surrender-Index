@@ -678,11 +678,11 @@ def post_reply_poll(link):
     driver.find_element_by_name("Choice1").send_keys("Yes")
     driver.find_element_by_name("Choice2").send_keys("No")
     Select(driver.find_element_by_xpath(
-        "//select[@aria-label='Days']")).select_by_visible_text("0")
+        "//span[.='Days']//..//..//select")).select_by_visible_text("0")
     Select(driver.find_element_by_xpath(
-        "//select[@aria-label='Hours']")).select_by_visible_text("1")
+        "//span[.='Hours']//..//..//select")).select_by_visible_text("1")
     Select(driver.find_element_by_xpath(
-        "//select[@aria-label='Minutes']")).select_by_visible_text("0")
+        "//span[.='Minutes']//..//..//select")).select_by_visible_text("0")
     driver.find_element_by_xpath("//div[@aria-label='Tweet text']").send_keys(
         "Should this punt's Surrender Index be canceled?")
     driver.find_element_by_xpath("//div[@data-testid='tweetButton']").click()
