@@ -1,6 +1,6 @@
 """
 Andrew Shackelford
-ashackelford@college.harvard.edu
+andrewshackelford97@gmail.com
 @shackoverflow
 
 surrender_index_bot.py
