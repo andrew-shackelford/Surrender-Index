@@ -73,7 +73,7 @@ def get_twitter_driver(link, headless=False):
         password = credentials['cancel_password']
 
     driver = get_game_driver(headless=headless)
-    driver.implicitly_wait(60)
+    driver.implicitly_wait(10)
     driver.get(link)
 
     driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
@@ -84,25 +84,18 @@ def get_twitter_driver(link, headless=False):
     driver.execute_script("arguments[0].click();", login_button)
 
     email_field = driver.find_element_by_xpath(
-        "//input[@name='session[username_or_email]']")
-    password_field = driver.find_element_by_xpath(
-        "//input[@name='session[password]']")
+        "//input[@name='username']")
     email_field.send_keys(email)
+    driver.find_element_by_xpath("//span[.='Next']//..//..//..").click()
+
+    password_field = driver.find_element_by_xpath(
+        "//input[@name='password']")
     password_field.send_keys(password)
-    driver.find_element_by_xpath(
-        "//div[@data-testid='LoginForm_Login_Button']").click()
+    driver.find_element_by_xpath("//span[.='Log in']//..//..//..").click()
 
     time.sleep(1)
-
-    if 'email_disabled=true' in driver.current_url:
-        username_field = driver.find_element_by_xpath(
-            "//input[@name='session[username_or_email]']")
-        password_field = driver.find_element_by_xpath(
-            "//input[@name='session[password]']")
-        username_field.send_keys(username)
-        password_field.send_keys(password)
-        driver.find_element_by_xpath(
-            "//div[@data-testid='LoginForm_Login_Button']").click()
+    driver.get(link)
+    time.sleep(3)
 
     return driver
 
@@ -670,7 +663,12 @@ def tweet_play(play, prev_play, drive, game, game_id):
 
 
 def post_reply_poll(link):
-    driver = get_twitter_driver(link)
+    for _ in range(5):
+        try:
+            driver = get_twitter_driver(link)
+            break
+        except BaseException:
+            pass
 
     driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
     driver.find_element_by_xpath("//div[@aria-label='Add poll']").click()
@@ -873,7 +871,7 @@ def live_callback():
             if is_final(game):
                 if has_been_final(game_id):
                     completed_game_ids.add(game_id)
-    while (time.time() < start_time + 60):
+    while (time.time() < start_time + 30):
         time.sleep(1)
     print("")
 
