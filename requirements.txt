@@ -4,3 +4,9 @@ tweepy~=3.10.0
 python-dateutil~=2.8.1
 google~=3.0.0
 selenium~=3.141.0
+twilio~=7.0.0
+google-api-python-client
+chromedriver_autoinstaller
+argparse
+espn_scraper
+google_auth_oauthlib
