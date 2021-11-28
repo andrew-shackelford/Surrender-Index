@@ -84,22 +84,22 @@ def get_twitter_driver(link, headless=False):
     driver.execute_script("arguments[0].click();", login_button)
 
     email_field = driver.find_element_by_xpath(
-        "//input[@name='username']")
+        "//input[@autocomplete='username']")
     email_field.send_keys(email)
-    driver.find_element_by_xpath("//span[.='Next']//..//..//..").click()
+    driver.find_element_by_xpath("//span[.='Next']//..//..").click()
 
     time.sleep(5)
-
+    
     if "phone number or username" in driver.page_source:
         username_field = driver.find_element_by_xpath(
             "//input[@name='text']")
         username_field.send_keys(username)
-        driver.find_element_by_xpath("//span[.='Next']//..//..//..").click()
+        driver.find_element_by_xpath("//span[.='Next']//..//..").click()
 
     password_field = driver.find_element_by_xpath(
         "//input[@name='password']")
     password_field.send_keys(password)
-    driver.find_element_by_xpath("//span[.='Log in']//..//..//..").click()
+    driver.find_element_by_xpath("//span[.='Log in']//..//..").click()
 
     time.sleep(1)
     driver.get(link)
