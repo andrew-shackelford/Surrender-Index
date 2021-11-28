@@ -88,6 +88,14 @@ def get_twitter_driver(link, headless=False):
     email_field.send_keys(email)
     driver.find_element_by_xpath("//span[.='Next']//..//..//..").click()
 
+    time.sleep(5)
+
+    if "phone number or username" in driver.page_source:
+        username_field = driver.find_element_by_xpath(
+            "//input[@name='text']")
+        username_field.send_keys(username)
+        driver.find_element_by_xpath("//span[.='Next']//..//..//..").click()
+
     password_field = driver.find_element_by_xpath(
         "//input[@name='password']")
     password_field.send_keys(password)
@@ -558,7 +566,8 @@ def create_delay_of_game_str(play, drive, game, prev_play,
         play,
         game) + " committed a (likely intentional) delay of game penalty, "
     old_yrdln_str = "moving the play from " + \
-        prev_play['start']['shortDownDistanceText'] + " at the " + prev_play['start']['possessionText']
+        prev_play['start']['shortDownDistanceText'] + \
+        " at the " + prev_play['start']['possessionText']
     new_yrdln_str = " to " + play['start']['shortDownDistanceText'] + \
         " at the " + play['start']['possessionText'] + ".\n\n"
     index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + \
@@ -673,16 +682,24 @@ def post_reply_poll(link):
     driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
     driver.find_element_by_xpath("//div[@aria-label='Add poll']").click()
 
+    time.sleep(1)
+
     driver.find_element_by_name("Choice1").send_keys("Yes")
     driver.find_element_by_name("Choice2").send_keys("No")
+
+    time.sleep(1)
     Select(driver.find_element_by_xpath(
         "//span[.='Days']//..//..//select")).select_by_visible_text("0")
     Select(driver.find_element_by_xpath(
         "//span[.='Hours']//..//..//select")).select_by_visible_text("1")
     Select(driver.find_element_by_xpath(
         "//span[.='Minutes']//..//..//select")).select_by_visible_text("0")
+
+    time.sleep(1)
     driver.find_element_by_xpath("//div[@aria-label='Tweet text']").send_keys(
         "Should this punt's Surrender Index be canceled?")
+
+    time.sleep(1)
     driver.find_element_by_xpath("//div[@data-testid='tweetButton']").click()
 
     time.sleep(10)
@@ -753,33 +770,25 @@ def get_now():
     return datetime.now(tz=tz.gettz())
 
 
-def update_current_year_games():
-    global current_year_games
-    two_months_ago = get_now() - timedelta(days=60)
-    scoreboard_urls = espn.get_all_scoreboard_urls("nfl", two_months_ago.year)
-    current_year_games = []
+def update_current_week_games():
+    global current_week_games
+    current_week_games = []
 
-    for scoreboard_url in scoreboard_urls:
-        data = None
-        backoff_time = 1.
-        while data is None:
-            try:
-                data = espn.get_url(scoreboard_url)
-            except BaseException:
-                time.sleep(backoff_time)
-                backoff_time *= 2.
-        for event in data['content']['sbData']['events']:
-            current_year_games.append(event)
+    espn_data = requests.get(
+        "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+        timeout=10).json()
+    for event in espn_data['events']:
+        current_week_games.append(event)
 
 
 def get_active_game_ids():
-    global current_year_games
+    global current_week_games
     global completed_game_ids
 
     now = get_now()
     active_game_ids = set()
 
-    for game in current_year_games:
+    for game in current_week_games:
         if game['id'] in completed_game_ids:
             # ignore any games that are marked completed (which is done by
             # checking if ESPN says final)
@@ -806,7 +815,7 @@ def download_data_for_active_games():
         base_link = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event="
         game_link = base_link + game_id
         try:
-            games[game_id] = requests.get(game_link).json()
+            games[game_id] = requests.get(game_link, timeout=10).json()
         except BaseException:
             traceback.print_exc()
             time_print("Error occurred:")
@@ -941,7 +950,7 @@ def main():
             elif not notify_using_native_mail:
                 gmail_client = initialize_gmail_client()
             send_heartbeat_message(should_repeat=False)
-            update_current_year_games()
+            update_current_week_games()
             load_tweeted_plays_dict()
             seen_plays = {}
 
