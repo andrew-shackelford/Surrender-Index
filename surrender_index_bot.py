@@ -76,30 +76,30 @@ def get_twitter_driver(link, headless=False):
     driver.implicitly_wait(10)
     driver.get(link)
 
-    driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
+    driver.find_element("xpath", "//div[@aria-label='Reply']").click()
 
     time.sleep(1)
-    login_button = driver.find_element_by_xpath("//a[@data-testid='login']")
+    login_button = driver.find_element("xpath", "//a[@href='/i/flow/login']")
     time.sleep(1)
     driver.execute_script("arguments[0].click();", login_button)
 
-    email_field = driver.find_element_by_xpath(
+    email_field = driver.find_element("xpath",
         "//input[@autocomplete='username']")
     email_field.send_keys(email)
-    driver.find_element_by_xpath("//span[.='Next']//..//..").click()
+    driver.find_element("xpath", "//span[.='Next']//..//..").click()
 
     time.sleep(5)
     
     if "phone number or username" in driver.page_source:
-        username_field = driver.find_element_by_xpath(
+        username_field = driver.find_element("xpath", 
             "//input[@name='text']")
         username_field.send_keys(username)
-        driver.find_element_by_xpath("//span[.='Next']//..//..").click()
+        driver.find_element("xpath", "//span[.='Next']//..//..").click()
 
-    password_field = driver.find_element_by_xpath(
+    password_field = driver.find_element("xpath",
         "//input[@name='password']")
     password_field.send_keys(password)
-    driver.find_element_by_xpath("//span[.='Log in']//..//..").click()
+    driver.find_element("xpath", "//div[@data-testid='LoginForm_Login_Button']").click()
 
     time.sleep(1)
     driver.get(link)
@@ -679,28 +679,28 @@ def post_reply_poll(link):
         except BaseException:
             pass
 
-    driver.find_element_by_xpath("//div[@aria-label='Reply']").click()
-    driver.find_element_by_xpath("//div[@aria-label='Add poll']").click()
+    driver.find_element("xpath", "//div[@aria-label='Reply']").click()
+    driver.find_element("xpath", "//div[@aria-label='Add poll']").click()
 
     time.sleep(1)
 
-    driver.find_element_by_name("Choice1").send_keys("Yes")
-    driver.find_element_by_name("Choice2").send_keys("No")
+    driver.find_element("name", "Choice1").send_keys("Yes")
+    driver.find_element("name", "Choice2").send_keys("No")
 
     time.sleep(1)
-    Select(driver.find_element_by_xpath(
+    Select(driver.find_element("xpath", 
         "//span[.='Days']//..//..//select")).select_by_visible_text("0")
-    Select(driver.find_element_by_xpath(
+    Select(driver.find_element("xpath",
         "//span[.='Hours']//..//..//select")).select_by_visible_text("1")
-    Select(driver.find_element_by_xpath(
+    Select(driver.find_element("xpath",
         "//span[.='Minutes']//..//..//select")).select_by_visible_text("0")
 
     time.sleep(1)
-    driver.find_element_by_xpath("//div[@aria-label='Tweet text']").send_keys(
+    driver.find_element("xpath", "//div[@aria-label='Tweet text']").send_keys(
         "Should this punt's Surrender Index be canceled?")
 
     time.sleep(1)
-    driver.find_element_by_xpath("//div[@data-testid='tweetButton']").click()
+    driver.find_element("xpath" ,"//div[@data-testid='tweetButton']").click()
 
     time.sleep(10)
     driver.close()
@@ -713,9 +713,9 @@ def check_reply(link):
 
     time.sleep(3)
 
-    poll_title = driver.find_element_by_xpath("//*[contains(text(), 'votes')]")
-    poll_content = poll_title.find_element_by_xpath("./../../../..")
-    poll_result = poll_content.find_elements_by_tag_name("span")
+    poll_title = driver.find_element("xpath", "//*[contains(text(), 'votes')]")
+    poll_content = poll_title.find_element("xpath", "./../../../..")
+    poll_result = poll_content.find_elements("tag name", "span")
     poll_values = [poll_result[2], poll_result[5]]
     poll_floats = list(
         map(lambda x: float(x.get_attribute("innerHTML").strip('%')),
