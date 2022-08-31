@@ -26,6 +26,7 @@ import numpy as np
 import os
 import pickle
 import requests
+from requests.adapters import HTTPAdapter, Retry
 import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
@@ -431,6 +432,8 @@ def calculate_percentiles(surrender_index, should_update_file=True):
     current_percentile = stats.percentileofscore(current_surrender_indices,
                                                  surrender_index,
                                                  kind='strict')
+    if np.isnan(current_percentile):
+        current_percentile = 100.
 
     all_surrender_indices = np.concatenate(
         (historical_surrender_indices, current_surrender_indices))
@@ -814,15 +817,7 @@ def download_data_for_active_games():
     for game_id in active_game_ids:
         base_link = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event="
         game_link = base_link + game_id
-        try:
-            games[game_id] = requests.get(game_link, timeout=10).json()
-        except BaseException:
-            traceback.print_exc()
-            time_print("Error occurred:")
-            time_print(e)
-            error_str = "Failed to download data for game_id " + game_id
-            time_print(error_str)
-            send_error_message(e, error_str)
+        games[game_id] = session.get(game_link, timeout=10).json()
 
     live_callback()
 
@@ -868,7 +863,7 @@ def live_callback():
 
                 try:
                     tweet_play(punt, prev_play, drive, game, game_id)
-                except BaseException:
+                except BaseException as e:
                     traceback.print_exc()
                     time_print("Error occurred:")
                     time_print(e)
@@ -902,6 +897,7 @@ def main():
     global gmail_client
     global twilio_client
     global completed_game_ids
+    global session
 
     parser = argparse.ArgumentParser(
         description="Run the Surrender Index bot.")
@@ -943,6 +939,12 @@ def main():
     while should_continue:
         try:
             chromedriver_autoinstaller.install()
+
+            session = requests.Session()
+            retries = Retry(total=5,
+                            backoff_factor=0.1,
+                            status_forcelist=[ 500, 502, 503, 504 ])
+            session.mount('http://', HTTPAdapter(max_retries=retries))
 
             # update current year games at 5 AM every day
             if notify_using_twilio:
