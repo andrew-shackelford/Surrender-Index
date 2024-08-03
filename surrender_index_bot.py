@@ -34,6 +34,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 from subprocess import Popen, PIPE
 import sys
 import threading
+from selenium.webdriver.chrome.service import Service
 import time
 import tweepy
 from twilio.rest import Client
@@ -60,10 +61,11 @@ should_tweet = True
 def get_game_driver(headless=True):
     global debug
     global not_headless
+    service = Service()
     options = webdriver.ChromeOptions()
     if headless and not debug and not not_headless:
         options.add_argument("headless")
-    return webdriver.Chrome(options=options)
+    return webdriver.Chrome(service=service, options=options)
 
 
 def get_twitter_driver(link, headless=False):
@@ -108,6 +110,57 @@ def get_twitter_driver(link, headless=False):
 
     return driver
 
+def get_post_driver(headless=False):
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+        email = credentials['email']
+        username = credentials['username']
+        password = credentials['password']
+
+    driver = get_game_driver(headless=headless)
+    driver.implicitly_wait(15)
+    driver.get('https://twitter.com/compose/tweet')
+
+    email_field = driver.find_element("xpath",
+        "//input[@autocomplete='username']")
+    email_field.send_keys(email)
+    driver.find_element("xpath", "//span[.='Next']//..//..").click()
+
+    time.sleep(5)
+
+    if "phone number or username" in driver.page_source:
+        username_field = driver.find_element("xpath",
+            "//input[@name='text']")
+        username_field.send_keys(username)
+        driver.find_element("xpath", "//span[.='Next']//..//..").click()
+
+    password_field = driver.find_element("xpath",
+        "//input[@name='password']")
+    password_field.send_keys(password)
+    driver.find_element("xpath", "//div[@data-testid='LoginForm_Login_Button']").click()
+
+    return driver
+
+def send_post_webdriver(text):
+    try:
+        for _ in range(5):
+            try:
+                driver = get_post_driver()
+                time.sleep(2)
+                driver.find_element("xpath", "//div[@aria-label='Tweet text']").send_keys(text)
+                time.sleep(1)
+                driver.find_element("xpath" ,"//div[@data-testid='tweetButton']").click()
+                time.sleep(10)
+                return
+            except BaseException:
+                pass
+    except Exception as e:
+        traceback.print_exc()
+        time_print("An error occurred when trying to post a tweet using webdriver")
+        time_print(text)
+        time_print(e)
+        send_error_message(
+            e, "An error occurred when trying to post a tweet using webdriver")
 
 ### POSSESSION DETERMINATION FUNCTIONS ###
 
@@ -408,7 +461,7 @@ def update_tweeted_plays(drive, game_id):
 
 
 def load_historical_surrender_indices():
-    with open('1999-2021_surrender_indices.npy', 'rb') as f:
+    with open('1999-2022_surrender_indices.npy', 'rb') as f:
         return np.load(f)
 
 
@@ -455,23 +508,30 @@ def calculate_percentiles(surrender_index, should_update_file=True):
 def initialize_api():
     with open('credentials.json', 'r') as f:
         credentials = json.load(f)
-    auth = tweepy.OAuthHandler(credentials['consumer_key'],
-                               credentials['consumer_secret'])
-    auth.set_access_token(credentials['access_token'],
-                          credentials['access_token_secret'])
-    api = tweepy.API(auth)
 
-    auth = tweepy.OAuthHandler(credentials['90_consumer_key'],
-                               credentials['90_consumer_secret'])
-    auth.set_access_token(credentials['90_access_token'],
-                          credentials['90_access_token_secret'])
-    ninety_api = tweepy.API(auth)
+    api = tweepy.Client(
+            bearer_token=credentials['bearer_token'],
+            consumer_key=credentials['consumer_key'],
+            consumer_secret=credentials['consumer_secret'],
+            access_token=credentials['access_token'],
+            access_token_secret=credentials['access_token_secret']
+        )
 
-    auth = tweepy.OAuthHandler(credentials['cancel_consumer_key'],
-                               credentials['cancel_consumer_secret'])
-    auth.set_access_token(credentials['cancel_access_token'],
-                          credentials['cancel_access_token_secret'])
-    cancel_api = tweepy.API(auth)
+    ninety_api = tweepy.Client(
+            bearer_token=credentials['90_bearer_token'],
+            consumer_key=credentials['90_consumer_key'],
+            consumer_secret=credentials['90_consumer_secret'],
+            access_token=credentials['90_access_token'],
+            access_token_secret=credentials['90_access_token_secret']
+        )
+
+    cancel_api = tweepy.Client(
+            bearer_token=credentials['cancel_bearer_token'],
+            consumer_key=credentials['cancel_consumer_key'],
+            consumer_secret=credentials['cancel_consumer_secret'],
+            access_token=credentials['cancel_access_token'],
+            access_token_secret=credentials['cancel_access_token_secret']
+        )
 
     return api, ninety_api, cancel_api
 
@@ -576,7 +636,7 @@ def create_delay_of_game_str(play, drive, game, prev_play,
     index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + \
         str(round(unadjusted_surrender_index, 2)) + ", "
     percentile_str = "ranking at the " + get_num_str(
-        unadjusted_current_percentile) + " percentile of the 2022 season."
+        unadjusted_current_percentile) + " percentile of the 2023 season."
 
     return penalty_str + old_yrdln_str + new_yrdln_str + index_str + percentile_str
 
@@ -607,7 +667,7 @@ def create_tweet_str(play,
         round(surrender_index, 2)
     ) + ', this punt ranks at the ' + get_num_str(
         current_percentile
-    ) + ' percentile of cowardly punts of the 2022 season, and the ' + get_num_str(
+    ) + ' percentile of cowardly punts of the 2023 season, and the ' + get_num_str(
         historical_percentile) + ' percentile of all punts since 1999.'
 
     return play_str + '\n\n' + surrender_str
@@ -617,7 +677,9 @@ def tweet_play(play, prev_play, drive, game, game_id):
     global api
     global ninety_api
     global cancel_api
+    global enable_cancel
     global should_tweet
+    global post_using_webdriver
 
     delay_of_game = is_delay_of_game(play, prev_play)
 
@@ -653,20 +715,27 @@ def tweet_play(play, prev_play, drive, game, game_id):
         time_print(delay_of_game_str)
 
     if should_tweet:
-        status = api.update_status(tweet_str)
+        if post_using_webdriver and not delay_of_game:
+            post_thread = threading.Thread(target=send_post_webdriver,
+                          args=(tweet_str,))
+            post_thread.start()
+        else:
+            # if delay of game, use the api anyways so that the reply works
+            status = api.create_tweet(text=tweet_str)
         if delay_of_game:
-            api.update_status(delay_of_game_str,
-                              in_reply_to_status_id=status.id_str)
+            api.create_tweet(text=delay_of_game_str,
+                              in_reply_to_tweet_id=status.data['id'])
 
     # Post the status to the 90th percentile account.
     if current_percentile >= 90. and should_tweet:
-        ninety_status = ninety_api.update_status(tweet_str)
+        ninety_status = ninety_api.create_tweet(text=tweet_str)
         if delay_of_game:
-            ninety_api.update_status(
-                delay_of_game_str, in_reply_to_status_id=ninety_status.id_str)
-        thread = threading.Thread(target=handle_cancel,
-                                  args=(ninety_status._json, tweet_str))
-        thread.start()
+            ninety_api.create_tweet(
+                text=delay_of_game_str, in_reply_to_tweet_id=ninety_status.data['id'])
+        if enable_cancel:
+            thread = threading.Thread(target=handle_cancel,
+                                      args=(ninety_status, tweet_str))
+            thread.start()
 
     update_tweeted_plays(drive, game_id)
 
@@ -712,6 +781,7 @@ def post_reply_poll(link):
 def check_reply(link):
     time.sleep(61 * 60)  # Wait one hour and one minute to check reply
     driver = get_game_driver(headless=False)
+    driver.implicitly_wait(15)
     driver.get(link)
 
     time.sleep(3)
@@ -733,19 +803,30 @@ def cancel_punt(orig_status, full_text):
     global ninety_api
     global cancel_api
 
-    ninety_api.destroy_status(orig_status['id'])
-    cancel_status = cancel_api.update_status(full_text)._json
-    new_cancel_text = 'CANCELED https://twitter.com/CancelSurrender/status/' + \
-        cancel_status['id_str']
+    ninety_api.delete_tweet(orig_status.data['id'])
+    cancel_status = cancel_api.create_tweet(text=full_text)
 
     time.sleep(10)
-    ninety_api.update_status(new_cancel_text)
+    ninety_api.create_tweet(text='CANCELED', quote_tweet_id=cancel_status.data['id'])
 
+def poll_using_tweepy(orig_id):
+    cancel_api.create_tweet(text="Should this punt's Surrender Index be canceled?",
+                            in_reply_to_tweet_id=orig_id,
+                            poll_duration_minutes=60,
+                            poll_options=["Yes", "No"])
 
 def handle_cancel(orig_status, full_text):
+    global reply_using_tweepy
+    if reply_using_tweepy:
+        poll_using_tweepy(orig_status.data['id'])
+        orig_link = 'https://twitter.com/surrender_idx90/status/' + \
+            orig_status.data['id']
+        if check_reply(orig_link):
+            cancel_punt(orig_status, full_text)
+        return
     try:
         orig_link = 'https://twitter.com/surrender_idx90/status/' + \
-            orig_status['id_str']
+            orig_status.data['id']
         post_reply_poll(orig_link)
         if check_reply(orig_link):
             cancel_punt(orig_status, full_text)
@@ -887,11 +968,14 @@ def main():
     global historical_surrender_indices
     global should_text
     global should_tweet
+    global post_using_webdriver
+    global reply_using_tweepy
     global notify_using_native_mail
     global notify_using_twilio
     global final_games
     global debug
     global not_headless
+    global enable_cancel
     global sleep_time
     global seen_plays
     global gmail_client
@@ -918,15 +1002,33 @@ def main():
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
+    # Disable posting using webdriver for the main account (since more than 50 punts/day)
+    parser.add_argument('--disablePostWebdriver',
+                        action='store_true',
+                        dest='disablePostWebdriver')
+    # Disable replying using tweepy (and reply via webdriver instead)
+    parser.add_argument('--disableTweepyReply',
+                        action='store_true',
+                        dest='disableTweepyReply')
+    # Disable the cancel account
+    parser.add_argument('--disableCancel',
+                        action='store_true',
+                        dest='disableCancel')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
     should_text = not args.disableNotifications
+    post_using_webdriver = not args.disablePostWebdriver
+    reply_using_tweepy = not args.disableTweepyReply
+    enable_cancel = not args.disableCancel
     notify_using_twilio = args.notifyUsingTwilio
     notify_using_native_mail = sys.platform == "darwin" and not notify_using_twilio
     debug = args.debug
     not_headless = args.notHeadless
 
     print("Tweeting Enabled" if should_tweet else "Tweeting Disabled")
+    if should_tweet:
+        print("Posting using webdriver" if post_using_webdriver else "Posting using api")
+        print("Replying using tweepy" if reply_using_tweepy else "Replying using webdriver")
 
     api, ninety_api, cancel_api = initialize_api()
     historical_surrender_indices = load_historical_surrender_indices()
