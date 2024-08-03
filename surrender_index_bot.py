@@ -679,7 +679,7 @@ def tweet_play(play, prev_play, drive, game, game_id):
     global cancel_api
     global enable_cancel
     global should_tweet
-    global post_using_webdriver
+    global enable_main_account
 
     delay_of_game = is_delay_of_game(play, prev_play)
 
@@ -714,8 +714,8 @@ def tweet_play(play, prev_play, drive, game, game_id):
             unadjusted_current_percentile, unadjusted_historical_percentile)
         time_print(delay_of_game_str)
 
-    if should_tweet:
-        if post_using_webdriver and not delay_of_game:
+    if should_tweet and enable_main_account:
+        if not delay_of_game:
             post_thread = threading.Thread(target=send_post_webdriver,
                           args=(tweet_str,))
             post_thread.start()
@@ -968,7 +968,7 @@ def main():
     global historical_surrender_indices
     global should_text
     global should_tweet
-    global post_using_webdriver
+    global enable_main_account
     global reply_using_tweepy
     global notify_using_native_mail
     global notify_using_twilio
@@ -1002,10 +1002,10 @@ def main():
     parser.add_argument('--disableFinalCheck',
                         action='store_true',
                         dest='disableFinalCheck')
-    # Disable posting using webdriver for the main account (since more than 50 punts/day)
-    parser.add_argument('--disablePostWebdriver',
+    # Enable the main account (has to post via webdriver since more than 50 punts/day)
+    parser.add_argument('--enableMainAccount',
                         action='store_true',
-                        dest='disablePostWebdriver')
+                        dest='enableMainAccount')
     # Disable replying using tweepy (and reply via webdriver instead)
     parser.add_argument('--disableTweepyReply',
                         action='store_true',
@@ -1017,7 +1017,7 @@ def main():
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
     should_text = not args.disableNotifications
-    post_using_webdriver = not args.disablePostWebdriver
+    enable_main_account = args.enableMainAccount
     reply_using_tweepy = not args.disableTweepyReply
     enable_cancel = not args.disableCancel
     notify_using_twilio = args.notifyUsingTwilio
@@ -1027,7 +1027,7 @@ def main():
 
     print("Tweeting Enabled" if should_tweet else "Tweeting Disabled")
     if should_tweet:
-        print("Posting using webdriver" if post_using_webdriver else "Posting using api")
+        print("Main account enabled" if enable_main_account else "Main account disabled")
         print("Replying using tweepy" if reply_using_tweepy else "Replying using webdriver")
 
     api, ninety_api, cancel_api = initialize_api()
