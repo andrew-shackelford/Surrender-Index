@@ -1010,16 +1010,16 @@ def main():
     parser.add_argument('--disableTweepyReply',
                         action='store_true',
                         dest='disableTweepyReply')
-    # Disable the cancel account
-    parser.add_argument('--disableCancel',
+    # Enable the cancel account (disabled by default due to webdriver issues)
+    parser.add_argument('--enableCancel',
                         action='store_true',
-                        dest='disableCancel')
+                        dest='enableCancel')
     args = parser.parse_args()
     should_tweet = not args.disableTweeting
     should_text = not args.disableNotifications
     enable_main_account = args.enableMainAccount
     reply_using_tweepy = not args.disableTweepyReply
-    enable_cancel = not args.disableCancel
+    enable_cancel = args.enableCancel
     notify_using_twilio = args.notifyUsingTwilio
     notify_using_native_mail = sys.platform == "darwin" and not notify_using_twilio
     debug = args.debug
