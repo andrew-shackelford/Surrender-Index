@@ -12,3 +12,7 @@ This project also contains a Jupyter Notebook used to calculate the Surrender In
 I don't anticipate updating this much, but I'm open to any comments or suggestions on how to improve the bot, and will work on them in my spare time (and am open to any pull requests!).  
 
 This bot would not be possible without [nflverse's](https://github.com/nflverse) data [repository](https://github.com/nflverse/nflfastR-data) of play-by-play data for every play since 1999. Thanks to [Ben Baldwin](https://twitter.com/benbbaldwin) et al. who maintain nflfastR and its data, and check out Ben's [4th down decision bot](https://twitter.com/ben_bot_baldwin) which also analyzes 4th down plays, albeit with a bit more statistical rigor than the Surrender Index.
+
+### Mastodon versions
+
+Tom Casavant has graciously [forked the repo](https://github.com/TomCasavant/Surrender-Index) and created Mastodon versions, available at [@surrender_index@tomkahe.com](https://tomkahe.com/@surrender_index) and [@surrender_idx90@tomkahe.com](https://tomkahe.com/@surrender_idx90), respectively.
