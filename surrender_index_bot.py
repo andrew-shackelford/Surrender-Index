@@ -223,8 +223,22 @@ def get_qtr_num(play):
     return play['period']['number']
 
 
+teams = {
+    '22': 'ARI', '1': 'ATL', '33': 'BAL', '2': 'BUF', '29': 'CAR',
+    '3': 'CHI', '4': 'CIN', '5': 'CLE', '6': 'DAL', '7': 'DEN',
+    '8': 'DET', '9': 'GB', '34': 'HOU', '11': 'IND', '30': 'JAX',
+    '12': 'KC', '13': 'LV', '24': 'LAC', '14': 'LAR', '15': 'MIA',
+    '16': 'MIN', '17': 'NE', '18': 'NO', '19': 'NYG', '20': 'NYJ',
+    '21': 'PHI', '23': 'PIT', '25': 'SF', '26': 'SEA', '27': 'TB',
+    '10': 'TEN', '28': 'WSH'
+}
+
 def is_in_opposing_territory(play):
-    return play['start']['yardsToEndzone'] < 50
+    team_id = str(play['start']['team']['id'])
+    team_abbreviation = teams.get(team_id)
+    possession_text = play['start']['possessionText']
+
+    return not(team_abbreviation and team_abbreviation in possession_text)
 
 
 def get_dist_num(play):
