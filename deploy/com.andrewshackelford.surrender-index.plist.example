@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.andrewshackelford.surrender-index</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_WITH_REPOSITORY_PATH/.venv/bin/python</string>
+        <string>REPLACE_WITH_REPOSITORY_PATH/surrender_index_bot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_REPOSITORY_PATH</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>SURRENDER_INDEX_CONFIG_DIR</key>
+        <string>REPLACE_WITH_CONFIG_DIRECTORY</string>
+    </dict>
+
+    <key>Umask</key>
+    <integer>63</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_WITH_REPOSITORY_PATH/logs/surrender-index.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACE_WITH_REPOSITORY_PATH/logs/surrender-index.error.log</string>
+</dict>
+</plist>
