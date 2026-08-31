@@ -17,19 +17,20 @@ import chromedriver_autoinstaller
 from datetime import datetime, timedelta, timezone
 from dateutil import parser, tz
 from email.mime.text import MIMEText
+import espn_scraper as espn
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import json
 import numpy as np
 import os
-from pathlib import Path
 import pickle
 import requests
 from requests.adapters import HTTPAdapter, Retry
 import scipy.stats as stats
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
+from selenium.common.exceptions import StaleElementReferenceException
 from subprocess import Popen, PIPE
 import sys
 import threading
@@ -54,37 +55,6 @@ historical_surrender_indices = None
 # Whether the bot should tweet out any punts
 should_tweet = True
 
-# Season metadata used in public posts and the historical baseline filename.
-CURRENT_SEASON = 2026
-HISTORICAL_START_SEASON = 1999
-HISTORICAL_END_SEASON = CURRENT_SEASON - 1
-HISTORICAL_INDICES_FILENAME = (
-    f'{HISTORICAL_START_SEASON}-{HISTORICAL_END_SEASON}_surrender_indices.npy'
-)
-CONFIG_DIRECTORY_ENV = 'SURRENDER_INDEX_CONFIG_DIR'
-
-
-def get_config_path(filename):
-    config_directory = os.environ.get(CONFIG_DIRECTORY_ENV, '.')
-    return Path(config_directory).expanduser() / filename
-
-
-def load_credentials():
-    with get_config_path('credentials.json').open('r') as credentials_file:
-        return json.load(credentials_file)
-
-
-def write_gmail_token(credentials):
-    token_path = get_config_path('gmail_token.pickle')
-    file_descriptor = os.open(
-        token_path,
-        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-        0o600,
-    )
-    with os.fdopen(file_descriptor, 'wb') as token_file:
-        os.fchmod(token_file.fileno(), 0o600)
-        pickle.dump(credentials, token_file)
-
 ### SELENIUM FUNCTIONS ###
 
 
@@ -99,10 +69,11 @@ def get_game_driver(headless=True):
 
 
 def get_twitter_driver(link, headless=False):
-    credentials = load_credentials()
-    email = credentials['cancel_email']
-    username = credentials['cancel_username']
-    password = credentials['cancel_password']
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+        email = credentials['cancel_email']
+        username = credentials['cancel_username']
+        password = credentials['cancel_password']
 
     driver = get_game_driver(headless=headless)
     driver.implicitly_wait(10)
@@ -140,10 +111,11 @@ def get_twitter_driver(link, headless=False):
     return driver
 
 def get_post_driver(headless=False):
-    credentials = load_credentials()
-    email = credentials['email']
-    username = credentials['username']
-    password = credentials['password']
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
+        email = credentials['email']
+        username = credentials['username']
+        password = credentials['password']
 
     driver = get_game_driver(headless=headless)
     driver.implicitly_wait(15)
@@ -503,7 +475,7 @@ def update_tweeted_plays(drive, game_id):
 
 
 def load_historical_surrender_indices():
-    with open(HISTORICAL_INDICES_FILENAME, 'rb') as f:
+    with open('1999-2025_surrender_indices.npy', 'rb') as f:
         return np.load(f)
 
 
@@ -548,7 +520,8 @@ def calculate_percentiles(surrender_index, should_update_file=True):
 
 
 def initialize_api():
-    credentials = load_credentials()
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
 
     api = tweepy.Client(
             bearer_token=credentials['bearer_token'],
@@ -578,28 +551,29 @@ def initialize_api():
 
 
 def initialize_gmail_client():
-    credentials = load_credentials()
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
     SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
     email = credentials['gmail_email']
     creds = None
-    gmail_token_path = get_config_path('gmail_token.pickle')
-    if gmail_token_path.exists():
-        gmail_token_path.chmod(0o600)
-        with gmail_token_path.open('rb') as token:
+    if os.path.exists("gmail_token.pickle"):
+        with open("gmail_token.pickle", "rb") as token:
             creds = pickle.load(token)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                str(get_config_path('gmail_credentials.json')), SCOPES)
+                'gmail_credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        write_gmail_token(creds)
+        with open("gmail_token.pickle", "wb") as token:
+            pickle.dump(creds, token)
     return build('gmail', 'v1', credentials=creds)
 
 
 def initialize_twilio_client():
-    credentials = load_credentials()
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
     return Client(credentials['twilio_account_sid'],
                   credentials['twilio_auth_token'])
 
@@ -608,7 +582,8 @@ def send_message(body):
     global gmail_client
     global twilio_client
     global notify_using_twilio
-    credentials = load_credentials()
+    with open('credentials.json', 'r') as f:
+        credentials = json.load(f)
 
     if notify_using_twilio:
         message = twilio_client.messages.create(
@@ -675,8 +650,7 @@ def create_delay_of_game_str(play, drive, game, prev_play,
     index_str = "If this penalty was in fact unintentional, the Surrender Index would be " + \
         str(round(unadjusted_surrender_index, 2)) + ", "
     percentile_str = "ranking at the " + get_num_str(
-        unadjusted_current_percentile) + \
-        f" percentile of the {CURRENT_SEASON} season."
+        unadjusted_current_percentile) + " percentile of the 2026 season."
 
     return penalty_str + old_yrdln_str + new_yrdln_str + index_str + percentile_str
 
@@ -707,9 +681,8 @@ def create_tweet_str(play,
         round(surrender_index, 2)
     ) + ', this punt ranks at the ' + get_num_str(
         current_percentile
-    ) + f' percentile of cowardly punts of the {CURRENT_SEASON} season, and the ' + get_num_str(
-        historical_percentile) + \
-        f' percentile of all punts since {HISTORICAL_START_SEASON}.'
+    ) + ' percentile of cowardly punts of the 2026 season, and the ' + get_num_str(
+        historical_percentile) + ' percentile of all punts since 1999.'
 
     return play_str + '\n\n' + surrender_str
 
